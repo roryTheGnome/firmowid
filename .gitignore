@@ -90,3 +90,7 @@ priv/static/.DS_Store
 **/skills/impeccable/scripts/config.json
 # The launcher downloads the pinned engine into ~/.impeccable (upstream layout).
 **/skills/impeccable/scripts/bin/
+
+.idea
+/priv/guides/
+

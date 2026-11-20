@@ -38,3 +38,4 @@
 *.yml merge=weave
 *.toml merge=weave
 *.md merge=weave
+*.patch text eol=lf
