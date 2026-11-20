@@ -18,6 +18,10 @@ defmodule FirmowidWeb.Invoicing.SalesInvoices.Components.InvoiceItems do
   alias FirmowidWeb.Invoicing.Utilities.VatExemption
   alias Phoenix.HTML.FormData
 
+  defp unit_options, do: ItemUnit.select_options()
+
+  defp unit_selected_labels, do: ItemUnit.selected_labels()
+
   defp currency_options do
     # Use only currencies supported by NBP (plus PLN as base currency)
     nbp_currencies = NbpApiClient.supported_currencies()
@@ -531,10 +535,8 @@ defmodule FirmowidWeb.Invoicing.SalesInvoices.Components.InvoiceItems do
                     aria-label={gettext("Item %{number}: unit", number: item.index + 1)}
                     phx-debounce
                     container_class="w-24"
-                    options={[
-                      {ItemUnit.display_unit("szt."), "szt."},
-                      {ItemUnit.display_unit("godz."), "godz."}
-                    ]}
+                    options={unit_options()}
+                    selected_labels={unit_selected_labels()}
                   />
                   <% price_input_mode = price_input_mode(@item_price_input_modes, item) %>
                   <.hidden_input show={price_input_mode == :net} field={item[:unit_price]}>
