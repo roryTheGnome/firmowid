@@ -130,7 +130,10 @@ defmodule FirmowidWeb.Invoicing.Components.InvoiceDetails do
 
   attr :is_cost_invoice, :boolean
   attr :amount, :any, required: true
-  attr :lang, :atom, default: :pl
+  attr :lang, :atom,
+    default: nil,
+    doc: "document language on the public share page; nil follows the interface locale"
+
   attr :paid, :boolean, default: false, doc: "paid when issued, so nothing is due"
 
   def invoice_amount(assigns) do
