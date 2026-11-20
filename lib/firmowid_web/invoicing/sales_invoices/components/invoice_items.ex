@@ -13,6 +13,7 @@ defmodule FirmowidWeb.Invoicing.SalesInvoices.Components.InvoiceItems do
 
   alias Firmowid.Currencies.NbpApiClient
   alias Firmowid.Ksef.VatRate
+  alias FirmowidWeb.Invoicing.Utilities.ItemUnit
   alias FirmowidWeb.Invoicing.Utilities.PriceInput
   alias FirmowidWeb.Invoicing.Utilities.VatExemption
   alias Phoenix.HTML.FormData
@@ -530,7 +531,10 @@ defmodule FirmowidWeb.Invoicing.SalesInvoices.Components.InvoiceItems do
                     aria-label={gettext("Item %{number}: unit", number: item.index + 1)}
                     phx-debounce
                     container_class="w-24"
-                    options={["szt.", "godz."]}
+                    options={[
+                      {ItemUnit.display_unit("szt."), "szt."},
+                      {ItemUnit.display_unit("godz."), "godz."}
+                    ]}
                   />
                   <% price_input_mode = price_input_mode(@item_price_input_modes, item) %>
                   <.hidden_input show={price_input_mode == :net} field={item[:unit_price]}>

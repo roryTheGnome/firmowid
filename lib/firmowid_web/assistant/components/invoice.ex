@@ -12,6 +12,7 @@ defmodule FirmowidWeb.Assistant.Components.Invoice do
   alias FirmowidUI.Invoicing.Issuance
   alias FirmowidWeb.Assistant.Components.Records
   alias FirmowidWeb.Core.Endpoint
+  alias FirmowidWeb.Invoicing.Utilities.ItemUnit
   alias FirmowidWeb.Settings.Utilities.Navigation, as: SettingsNavigation
   alias Phoenix.LiveView.Rendered
 
@@ -93,7 +94,7 @@ defmodule FirmowidWeb.Assistant.Components.Invoice do
               <:meta>
                 {gettext("%{quantity} %{unit} × %{price} net",
                   quantity: item.quantity,
-                  unit: item.unit,
+                  unit: ItemUnit.display_unit(item.unit),
                   price: item.price
                 )}
               </:meta>

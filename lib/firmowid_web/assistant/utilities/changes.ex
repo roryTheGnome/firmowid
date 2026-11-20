@@ -24,6 +24,7 @@ defmodule FirmowidWeb.Assistant.Utilities.Changes do
   alias Firmowid.Scope
   alias Firmowid.Timetracker.Project
   alias Firmowid.Timetracker.Session
+  alias FirmowidWeb.Invoicing.Utilities.ItemUnit
   alias FirmowidWeb.Invoicing.Utilities.VatExemption
   alias FirmowidWeb.Timetracker.Utilities.LeavePresentation
 
@@ -576,7 +577,7 @@ defmodule FirmowidWeb.Assistant.Utilities.Changes do
         gettext("%{name} · %{quantity} %{unit} × %{price} net",
           name: item.name,
           quantity: item.quantity,
-          unit: item.unit,
+          unit: ItemUnit.display_unit(item.unit),
           price: Money.new(invoice.currency, item.unit_price)
         )
 

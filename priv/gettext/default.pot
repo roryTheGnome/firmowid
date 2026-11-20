@@ -15049,6 +15049,12 @@ msgctxt "hours worked unit"
 msgid "hrs"
 msgstr ""
 
+#: lib/firmowid_web/invoicing/utilities/item_unit.ex
+#, elixir-autogen, elixir-format
+msgctxt "invoice item unit"
+msgid "hrs"
+msgstr ""
+
 #: lib/firmowid_web/landing/components/sections.ex
 #, elixir-autogen, elixir-format
 msgid "in October"
@@ -15410,6 +15416,12 @@ msgstr ""
 #: lib/firmowid_web/assistant/components/invoice.ex
 #, elixir-autogen, elixir-format
 msgid "paid %{date}"
+msgstr ""
+
+#: lib/firmowid_web/invoicing/utilities/item_unit.ex
+#, elixir-autogen, elixir-format
+msgctxt "invoice item unit"
+msgid "pcs"
 msgstr ""
 
 #: lib/firmowid_web/management/components/employee_payout_details.ex
