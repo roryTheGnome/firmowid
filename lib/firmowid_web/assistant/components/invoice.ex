@@ -94,7 +94,7 @@ defmodule FirmowidWeb.Assistant.Components.Invoice do
               <:meta>
                 {gettext("%{quantity} %{unit} × %{price} net",
                   quantity: item.quantity,
-                  unit: ItemUnit.display_unit(item.unit),
+                  unit: item.unit,
                   price: item.price
                 )}
               </:meta>
@@ -274,7 +274,7 @@ defmodule FirmowidWeb.Assistant.Components.Invoice do
 
     %{
       name: shown.name,
-      unit: shown.unit,
+      unit: ItemUnit.display_unit(shown.unit),
       quantity: changed(before, now, & &1.quantity, &Decimal.eq?/2),
       price: changed(before, now, &Money.new(currency, &1.unit_price), &Money.equal?/2),
       gross:
