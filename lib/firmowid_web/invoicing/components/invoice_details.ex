@@ -134,12 +134,15 @@ defmodule FirmowidWeb.Invoicing.Components.InvoiceDetails do
   attr :paid, :boolean, default: false, doc: "paid when issued, so nothing is due"
 
   def invoice_amount(assigns) do
-    assigns = assign(assigns, :is_refund, refund?(assigns))
+    assigns =
+      assigns
+      |> assign(:is_refund, refund?(assigns))
+      |> assign(:amount_label, invoice_amount_label(assigns))
 
     ~H"""
     <div class="flex flex-col items-end justify-between gap-2 pl-1">
       <label class="text-sm/snug text-grey-700" for="total-amount">
-        {invoice_amount_label(@lang, @is_refund, @paid)}
+        {@amount_label}
       </label>
       <p
         id="total-amount"
@@ -155,17 +158,19 @@ defmodule FirmowidWeb.Invoicing.Components.InvoiceDetails do
     """
   end
 
-  defp invoice_amount_label(:en, _is_refund, true), do: "Paid"
-  defp invoice_amount_label(:pl, _is_refund, true), do: "Zapłacono"
-
-  defp invoice_amount_label(lang, is_refund, false) do
-    case {lang, is_refund} do
-      {:en, true} -> "Total to refund"
-      {:en, false} -> "Total to pay"
-      {:pl, true} -> "Razem do zwrotu"
-      {:pl, false} -> "Razem do zapłaty"
-    end
+  defp invoice_amount_label(%{lang: lang} = assigns) when lang in [:en, :pl] do
+    Gettext.with_locale(Firmowid.Gettext, Atom.to_string(lang), fn ->
+      invoice_amount_label_text(assigns)
+    end)
   end
+
+  defp invoice_amount_label(assigns), do: invoice_amount_label_text(assigns)
+
+  defp invoice_amount_label_text(%{paid: true}), do: gettext("Paid")
+
+  defp invoice_amount_label_text(%{is_refund: true}), do: gettext("Total to refund")
+
+  defp invoice_amount_label_text(_), do: gettext("Total to pay")
 
   defp refund?(%{is_cost_invoice: true, amount: amount}) do
     Decimal.gt?(Money.to_decimal(amount), 0)

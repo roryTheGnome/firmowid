@@ -13139,8 +13139,14 @@ msgid "Total paid"
 msgstr ""
 
 #: lib/firmowid_web/assistant/components/invoice.ex
+#: lib/firmowid_web/invoicing/components/invoice_details.ex
 #, elixir-autogen, elixir-format
 msgid "Total to pay"
+msgstr ""
+
+#: lib/firmowid_web/invoicing/components/invoice_details.ex
+#, elixir-autogen, elixir-format
+msgid "Total to refund"
 msgstr ""
 
 #: lib/firmowid_web/landing/components/sections.ex
