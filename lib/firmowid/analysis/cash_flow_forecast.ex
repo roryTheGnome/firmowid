@@ -20,6 +20,9 @@ defmodule Firmowid.Analysis.CashFlowForecast do
   alias Firmowid.Finances
   alias Firmowid.Finances.BankAccount
   alias Firmowid.Finances.Transaction
+  alias Firmowid.Invoicing
+  alias Firmowid.Invoicing.CostInvoice
+  alias Firmowid.Invoicing.SalesInvoice
   alias Firmowid.Scope
 
   @type horizon_days :: 30 | 60 | 90
@@ -102,6 +105,7 @@ defmodule Firmowid.Analysis.CashFlowForecast do
   end
 
   @transaction_page_size 100
+  @invoice_page_size 100
 
   @spec account_snapshots(Scope.t()) :: [account_snapshot()]
   defp account_snapshots(scope) do
@@ -152,10 +156,7 @@ defmodule Firmowid.Analysis.CashFlowForecast do
   end
 
   defp list_transaction_pages(read_scope, keyset, acc) do
-    page =
-      Enum.reject([limit: @transaction_page_size, after: keyset], fn {_key, val} ->
-        is_nil(val)
-      end)
+    page = keyset_page(@transaction_page_size, keyset)
 
     case Finances.list_transactions!(
            %{},
@@ -202,7 +203,162 @@ defmodule Firmowid.Analysis.CashFlowForecast do
   end
 
   @spec collect_invoice_movements(Date.t(), Date.t(), Scope.t()) :: [movement()]
-  defp collect_invoice_movements(_as_of, _end_date, _scope), do: []
+  defp collect_invoice_movements(as_of, end_date, scope) do
+    read_scope = Analysis.analysis_scope(scope)
+
+    collect_sales_inflow_movements(as_of, end_date, read_scope) ++
+      collect_cost_refund_movements(as_of, end_date, read_scope)
+  end
+
+  @spec collect_sales_inflow_movements(Date.t(), Date.t(), Scope.t()) :: [movement()]
+  defp collect_sales_inflow_movements(as_of, end_date, read_scope) do
+    read_scope
+    |> unpaid_sales_invoices()
+    |> Enum.flat_map(&sales_inflow_movement(&1, as_of, end_date))
+  end
+
+  @spec collect_cost_refund_movements(Date.t(), Date.t(), Scope.t()) :: [movement()]
+  defp collect_cost_refund_movements(as_of, end_date, read_scope) do
+    read_scope
+    |> unpaid_cost_invoices()
+    |> Enum.filter(&Money.positive?(&1.effective_amount))
+    |> Enum.flat_map(&cost_refund_movement(&1, as_of, end_date))
+  end
+
+  @spec unpaid_sales_invoices(Scope.t()) :: [SalesInvoice.t()]
+  defp unpaid_sales_invoices(read_scope) do
+    list_all_sales_invoices(
+      read_scope,
+      %{reconciliation: :pending, merge_corrections: true, submission: :confirmed}
+    )
+  end
+
+  @spec unpaid_cost_invoices(Scope.t()) :: [CostInvoice.t()]
+  defp unpaid_cost_invoices(read_scope) do
+    list_all_cost_invoices(read_scope, %{reconciliation: :pending, merge_corrections: true})
+  end
+
+  defp list_all_sales_invoices(read_scope, args) do
+    sales_invoice_pages(read_scope, args, nil, [])
+  end
+
+  defp sales_invoice_pages(read_scope, args, keyset, acc) do
+    page = keyset_page(@invoice_page_size, keyset)
+
+    case Invoicing.list_sales_invoices!(args,
+           load: [:effective_amount, :effective_due_date, :buyer_display_name_label],
+           query: [sort: [id: :asc]],
+           page: page,
+           scope: read_scope
+         ) do
+      %Ash.Page.Keyset{results: results, after: next, more?: true} when not is_nil(next) ->
+        sales_invoice_pages(read_scope, args, next, acc ++ results)
+
+      %Ash.Page.Keyset{results: results} ->
+        acc ++ results
+
+      results when is_list(results) ->
+        acc ++ results
+    end
+  end
+
+  defp list_all_cost_invoices(read_scope, args) do
+    cost_invoice_pages(read_scope, args, nil, [])
+  end
+
+  defp cost_invoice_pages(read_scope, args, keyset, acc) do
+    page = keyset_page(@invoice_page_size, keyset)
+
+    case Invoicing.list_cost_invoices!(args,
+           load: [:effective_amount, :effective_due_date, :effective_seller_display_name],
+           query: [sort: [id: :asc]],
+           page: page,
+           scope: read_scope
+         ) do
+      %Ash.Page.Keyset{results: results, after: next, more?: true} when not is_nil(next) ->
+        cost_invoice_pages(read_scope, args, next, acc ++ results)
+
+      %Ash.Page.Keyset{results: results} ->
+        acc ++ results
+
+      results when is_list(results) ->
+        acc ++ results
+    end
+  end
+
+  defp keyset_page(size, nil), do: [limit: size]
+  defp keyset_page(size, keyset), do: [limit: size, after: keyset]
+
+  defp sales_inflow_movement(%SalesInvoice{} = invoice, as_of, end_date) do
+    with %Date{} = due <- invoice.effective_due_date,
+         %Money{} = amount <- inflow_money(invoice.effective_amount),
+         scheduled = clamp_scheduled_date(due, as_of),
+         true <- in_forecast_window?(scheduled, as_of, end_date) do
+      [inflow_movement(:sales_invoice, invoice.id, scheduled, amount, invoice.sale_date, movement_label(invoice), invoice.invoice_number)]
+    else
+      _ -> []
+    end
+  end
+
+  defp cost_refund_movement(%CostInvoice{} = invoice, as_of, end_date) do
+    with %Date{} = due <- invoice.effective_due_date,
+         %Money{} = amount <- inflow_money(invoice.effective_amount),
+         scheduled = clamp_scheduled_date(due, as_of),
+         true <- in_forecast_window?(scheduled, as_of, end_date) do
+      [inflow_movement(:cost_invoice, invoice.id, scheduled, amount, invoice.sale_date, movement_label(invoice), nil)]
+    else
+      _ -> []
+    end
+  end
+
+  defp movement_label(%SalesInvoice{buyer_display_name_label: label}) when is_binary(label), do: String.trim(label)
+  defp movement_label(%SalesInvoice{}), do: ""
+  defp movement_label(%CostInvoice{effective_seller_display_name: label}) when is_binary(label), do: String.trim(label)
+  defp movement_label(%CostInvoice{}), do: ""
+
+  defp inflow_movement(source, source_id, date, %Money{} = amount, sale_date, label, invoice_number) do
+    %{
+      source: source,
+      source_id: source_id,
+      date: date,
+      amount: amount,
+      amount_pln: inflow_amount_pln(amount, sale_date),
+      label: label
+    }
+    |> maybe_put_invoice_number(invoice_number)
+  end
+
+  defp maybe_put_invoice_number(movement, number) when is_binary(number) and number != "" do
+    Map.put(movement, :invoice_number, number)
+  end
+
+  defp maybe_put_invoice_number(movement, _), do: movement
+
+  defp inflow_money(%Money{} = amount) do
+    if Money.positive?(amount), do: Money.abs(amount), else: nil
+  end
+
+  defp inflow_amount_pln(%Money{} = amount, %Date{} = sale_date) do
+    rate_date = Enum.min([sale_date, Date.utc_today()], Date)
+
+    amount
+    |> Money.to_currency_code()
+    |> Atom.to_string()
+    |> then(&Currencies.normalize_amount_to_pln(Money.to_decimal(amount), &1, rate_date))
+    |> Decimal.round(2, :half_up)
+  end
+
+  defp inflow_amount_pln(%Money{} = amount, _sale_date) do
+    inflow_amount_pln(amount, Date.utc_today())
+  end
+
+  defp clamp_scheduled_date(due, as_of) do
+    if Date.compare(due, as_of) == :lt, do: as_of, else: due
+  end
+
+  defp in_forecast_window?(date, as_of, end_date) do
+    Date.compare(date, as_of) != :lt and Date.compare(date, end_date) != :gt
+  end
 
   @spec collect_payroll_movements(Date.t(), Scope.t()) :: [movement()]
   defp collect_payroll_movements(_as_of, _scope), do: []
