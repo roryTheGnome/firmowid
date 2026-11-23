@@ -152,7 +152,10 @@ defmodule Firmowid.Analysis.CashFlowForecast do
   end
 
   defp list_transaction_pages(read_scope, keyset, acc) do
-    page = [limit: @transaction_page_size | if(keyset, do: [after: keyset], else: [])]
+    page =
+      Enum.reject([limit: @transaction_page_size, after: keyset], fn {_key, val} ->
+        is_nil(val)
+      end)
 
     case Finances.list_transactions!(
            %{},
