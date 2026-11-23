@@ -337,7 +337,8 @@ defmodule Firmowid.Analysis.CashFlowForecast do
   defp movement_label(%CostInvoice{}), do: ""
 
   defp inflow_movement(source, source_id, date, %Money{} = amount, sale_date, label, invoice_number) do
-    %{movement_fields(source, source_id, date, amount, sale_date, label) | amount_pln: inflow_amount_pln(amount, sale_date)}
+    movement_fields(source, source_id, date, amount, sale_date, label)
+    |> Map.put(:amount_pln, inflow_amount_pln(amount, sale_date))
     |> maybe_put_invoice_number(invoice_number)
   end
 
