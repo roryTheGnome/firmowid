@@ -9,8 +9,17 @@ defmodule Firmowid.Analysis.CashFlowForecast do
 
   Expects an authorized `Scope` with at least the invoicing role, like
   `Firmowid.Analysis.get_organization_totals/4`.
+
+  Starting balance sums every synced transaction per bank account (including
+  matched and internal transfers). Only the forward projection uses unpaid
+  invoices and estimates.
   """
 
+  alias Firmowid.Analysis
+  alias Firmowid.Currencies.Converter, as: Currencies
+  alias Firmowid.Finances
+  alias Firmowid.Finances.BankAccount
+  alias Firmowid.Finances.Transaction
   alias Firmowid.Scope
 
   @type horizon_days :: 30 | 60 | 90
@@ -69,7 +78,7 @@ defmodule Firmowid.Analysis.CashFlowForecast do
     end_date = Date.add(as_of, horizon_days)
 
     accounts = account_snapshots(scope)
-    starting = starting_balance_pln(accounts)
+    starting = starting_balance_pln(accounts, as_of)
 
     movements =
       []
@@ -92,26 +101,109 @@ defmodule Firmowid.Analysis.CashFlowForecast do
           "invalid horizon_days: expected 30, 60, or 90, got #{inspect(horizon_days)}"
   end
 
-  # Step 3 — connected accounts and synced transaction sums
+  @transaction_page_size 100
+
   @spec account_snapshots(Scope.t()) :: [account_snapshot()]
-  defp account_snapshots(_scope), do: []
+  defp account_snapshots(scope) do
+    read_scope = Analysis.analysis_scope(scope)
 
-  @spec starting_balance_pln([account_snapshot()]) :: Decimal.t()
-  defp starting_balance_pln([]), do: Decimal.new(0)
+    accounts =
+      Finances.list_bank_accounts!(
+        query: [sort: [institution_name: :asc, iban: :asc, id: :asc]],
+        scope: read_scope
+      )
 
-  defp starting_balance_pln(accounts) do
-    Enum.reduce(accounts, Decimal.new(0), fn _account, sum -> sum end)
+    by_account =
+      read_scope
+      |> list_all_transactions()
+      |> Enum.group_by(& &1.bank_account_id)
+
+    Enum.map(accounts, fn account ->
+      transactions = Map.get(by_account, account.id, [])
+
+      %{
+        id: account.id,
+        label: account_label(account),
+        currency: account.currency,
+        balance: account_balance(account.currency, transactions),
+        oldest_booking_date: oldest_booking_date(transactions)
+      }
+    end)
   end
 
-  # Steps 4–5 — unpaid confirmed sales and cost invoices
+  @spec starting_balance_pln([account_snapshot()], Date.t()) :: Decimal.t()
+  defp starting_balance_pln([], _as_of), do: Decimal.new(0)
+
+  defp starting_balance_pln(accounts, as_of) do
+    accounts
+    |> Enum.reduce(Decimal.new(0), fn %{balance: balance, currency: currency}, sum ->
+      pln =
+        Currencies.normalize_amount_to_pln(Money.to_decimal(balance), currency, as_of)
+        |> Decimal.round(2, :half_up)
+
+      Decimal.add(sum, pln)
+    end)
+    |> Decimal.round(2, :half_up)
+  end
+
+  @spec list_all_transactions(Scope.t()) :: [Transaction.t()]
+  defp list_all_transactions(read_scope) do
+    list_transaction_pages(read_scope, nil, [])
+  end
+
+  defp list_transaction_pages(read_scope, after, acc) do
+    page = [limit: @transaction_page_size | if(after, do: [after: after], else: [])]
+
+    case Finances.list_transactions!(
+           %{},
+           query: [select: [:bank_account_id, :amount, :booking_date, :id], sort: [id: :asc]],
+           page: page,
+           scope: read_scope
+         ) do
+      %Ash.Page.Keyset{results: results, after: next, more?: true} when not is_nil(next) ->
+        list_transaction_pages(read_scope, next, acc ++ results)
+
+      %Ash.Page.Keyset{results: results} ->
+        acc ++ results
+
+      results when is_list(results) ->
+        acc ++ results
+    end
+  end
+
+  @spec account_balance(String.t(), [Transaction.t()]) :: Money.t()
+  defp account_balance(currency, transactions) do
+    Enum.reduce(transactions, Money.new!(currency, 0), fn transaction, balance ->
+      Money.add!(balance, transaction.amount)
+    end)
+  end
+
+  @spec account_label(BankAccount.t()) :: String.t()
+  defp account_label(%BankAccount{name: name}) when is_binary(name) and name != "" do
+    String.trim(name)
+  end
+
+  defp account_label(%BankAccount{institution_name: name}) when is_binary(name) and name != "" do
+    String.trim(name)
+  end
+
+  defp account_label(%BankAccount{iban: iban}) when is_binary(iban), do: iban
+
+  @spec oldest_booking_date([Transaction.t()]) :: Date.t() | nil
+  defp oldest_booking_date([]), do: nil
+
+  defp oldest_booking_date(transactions) do
+    transactions
+    |> Enum.map(& &1.booking_date)
+    |> Enum.min(Date, fn -> nil end)
+  end
+
   @spec collect_invoice_movements(Date.t(), Date.t(), Scope.t()) :: [movement()]
   defp collect_invoice_movements(_as_of, _end_date, _scope), do: []
 
-  # Step 6 — current-month payroll payout estimates
   @spec collect_payroll_movements(Date.t(), Scope.t()) :: [movement()]
   defp collect_payroll_movements(_as_of, _scope), do: []
 
-  # Step 7 — unfulfilled expected transactions
   @spec collect_expected_movements(Date.t(), Date.t(), Scope.t()) :: [movement()]
   defp collect_expected_movements(_as_of, _end_date, _scope), do: []
 
