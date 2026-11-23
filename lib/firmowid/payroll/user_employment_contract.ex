@@ -253,6 +253,10 @@ defmodule Firmowid.Payroll.UserEmploymentContract do
       authorize_if expr(not is_nil(^actor(:org_id)) and organization_id == ^actor(:org_id))
     end
 
+    bypass [{SystemActorRole, roles: [:analysis_reader]}, action([:read, :list])] do
+      authorize_if expr(not is_nil(^actor(:org_id)) and organization_id == ^actor(:org_id))
+    end
+
     policy action_type(:create) do
       authorize_if {SystemActorRole, roles: [:document_blob_processor]}
       forbid_if always()

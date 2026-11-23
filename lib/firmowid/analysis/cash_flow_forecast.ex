@@ -23,6 +23,7 @@ defmodule Firmowid.Analysis.CashFlowForecast do
   alias Firmowid.Invoicing
   alias Firmowid.Invoicing.CostInvoice
   alias Firmowid.Invoicing.SalesInvoice
+  alias Firmowid.Payroll
   alias Firmowid.Scope
 
   @type horizon_days :: 30 | 60 | 90
@@ -86,7 +87,7 @@ defmodule Firmowid.Analysis.CashFlowForecast do
     movements =
       []
       |> Kernel.++(collect_invoice_movements(as_of, end_date, scope))
-      |> Kernel.++(collect_payroll_movements(as_of, scope))
+      |> Kernel.++(collect_payroll_movements(as_of, end_date, scope))
       |> Kernel.++(collect_expected_movements(as_of, end_date, scope))
 
     %{
@@ -393,8 +394,74 @@ defmodule Firmowid.Analysis.CashFlowForecast do
     Date.compare(date, as_of) != :lt and Date.compare(date, end_date) != :gt
   end
 
-  @spec collect_payroll_movements(Date.t(), Scope.t()) :: [movement()]
-  defp collect_payroll_movements(_as_of, _scope), do: []
+  @spec collect_payroll_movements(Date.t(), Date.t(), Scope.t()) :: [movement()]
+  defp collect_payroll_movements(as_of, end_date, %Scope{} = scope) do
+    read_scope = Analysis.analysis_scope(scope)
+    month = Date.beginning_of_month(as_of)
+    scheduled = Date.end_of_month(month)
+
+    if in_forecast_window?(scheduled, as_of, end_date) do
+      paid_user_ids = paid_salary_user_ids(read_scope, month)
+
+      Payroll.list_salaries!(
+        %{active_at: scheduled},
+        load: [member: [:name], monthly_amount: [month: month], payout_estimates: [month: month]],
+        query: [filter: [member: [archived_at: [is_nil: true]]]],
+        scope: read_scope
+      )
+      |> Enum.reject(&is_nil(&1.member.user_id))
+      |> Enum.reject(fn salary -> MapSet.member?(paid_user_ids, salary.member.user_id) end)
+      |> Enum.flat_map(&payroll_movement(&1, scheduled))
+    else
+      []
+    end
+  end
+
+  defp paid_salary_user_ids(read_scope, month) do
+    %{salary_month: month}
+    |> Finances.list_transactions!(scope: read_scope)
+    |> Enum.filter(& &1.salary_user_id)
+    |> MapSet.new(& &1.salary_user_id)
+  end
+
+  defp payroll_movement(salary, scheduled) do
+    with %Money{} = net <- payroll_payout_amount(salary.payout_estimates),
+         false <- Money.zero?(net),
+         label <- payroll_label(salary) do
+      amount = Money.negate!(net)
+
+      [
+        outflow_movement(:payroll, salary.id, scheduled, amount, scheduled, label)
+        |> Map.put(:member_id, salary.member_id)
+      ]
+    else
+      _ -> []
+    end
+  end
+
+  defp payroll_label(%{member: %{name: name}}) when is_binary(name) and name != "", do: String.trim(name)
+  defp payroll_label(_), do: ""
+
+  defp payroll_payout_amount(estimates) when is_list(estimates) do
+    case Enum.find(estimates, &(&1.basis == :profile)) do
+      %{amount: %Money{} = amount} when not Money.zero?(amount) ->
+        amount
+
+      _ ->
+        estimates
+        |> Enum.reject(fn
+          %{amount: amount} -> is_nil(amount) or Money.zero?(amount)
+          _ -> true
+        end)
+        |> Enum.max_by(&Money.to_decimal(&1.amount), Decimal, fn -> nil end)
+        |> case do
+          %{amount: amount} -> amount
+          nil -> nil
+        end
+    end
+  end
+
+  defp payroll_payout_amount(_), do: nil
 
   @spec collect_expected_movements(Date.t(), Date.t(), Scope.t()) :: [movement()]
   defp collect_expected_movements(_as_of, _end_date, _scope), do: []

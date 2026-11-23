@@ -114,6 +114,10 @@ defmodule Firmowid.Payroll.UserSalary do
       authorize_if expr(not is_nil(^actor(:org_id)) and organization_id == ^actor(:org_id))
     end
 
+    bypass [{SystemActorRole, roles: [:analysis_reader]}, action([:read, :list])] do
+      authorize_if expr(not is_nil(^actor(:org_id)) and organization_id == ^actor(:org_id))
+    end
+
     bypass {ActorRole, role: :admin} do
       authorize_if always()
     end
