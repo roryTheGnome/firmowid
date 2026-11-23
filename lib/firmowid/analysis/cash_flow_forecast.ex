@@ -19,6 +19,7 @@ defmodule Firmowid.Analysis.CashFlowForecast do
   alias Firmowid.Currencies.Converter, as: Currencies
   alias Firmowid.Finances
   alias Firmowid.Finances.BankAccount
+  alias Firmowid.Finances.ExpectedTransaction
   alias Firmowid.Finances.Transaction
   alias Firmowid.Invoicing
   alias Firmowid.Invoicing.CostInvoice
@@ -468,7 +469,75 @@ defmodule Firmowid.Analysis.CashFlowForecast do
   defp payroll_payout_amount(_), do: nil
 
   @spec collect_expected_movements(Date.t(), Date.t(), Scope.t()) :: [movement()]
-  defp collect_expected_movements(_as_of, _end_date, _scope), do: []
+  defp collect_expected_movements(as_of, end_date, %Scope{} = scope) do
+    read_scope = Analysis.analysis_scope(scope)
+
+    read_scope
+    |> unfulfilled_expected_transactions(end_date)
+    |> Enum.flat_map(&expected_movement(&1, as_of, end_date))
+  end
+
+  defp unfulfilled_expected_transactions(read_scope, end_date) do
+    Finances.list_expected_transactions!(
+      %{fulfilled: false, date_to: end_date},
+      scope: read_scope
+    )
+  end
+
+  defp expected_movement(%ExpectedTransaction{} = expected, as_of, end_date) do
+    scheduled = clamp_scheduled_date(expected.date, as_of)
+
+    cond do
+      not in_forecast_window?(scheduled, as_of, end_date) ->
+        []
+
+      Money.zero?(expected.amount) ->
+        []
+
+      Money.positive?(expected.amount) ->
+        with %Money{} = amount <- inflow_money(expected.amount) do
+          [
+            inflow_movement(
+              :expected_transaction,
+              expected.id,
+              scheduled,
+              amount,
+              expected.date,
+              expected_label(expected),
+              nil
+            )
+          ]
+        else
+          _ -> []
+        end
+
+      true ->
+        with %Money{} = amount <- outflow_money(expected.amount) do
+          [
+            outflow_movement(
+              :expected_transaction,
+              expected.id,
+              scheduled,
+              amount,
+              expected.date,
+              expected_label(expected)
+            )
+          ]
+        else
+          _ -> []
+        end
+    end
+  end
+
+  defp expected_label(%ExpectedTransaction{counterparty_name: name})
+       when is_binary(name) and name != "",
+       do: String.trim(name)
+
+  defp expected_label(%ExpectedTransaction{description: description})
+       when is_binary(description),
+       do: String.trim(description)
+
+  defp expected_label(_), do: ""
 
   @spec build_timeline(Date.t(), Date.t(), Decimal.t(), [movement()]) :: [forecast_day()]
   defp build_timeline(as_of, end_date, starting_balance_pln, movements) do

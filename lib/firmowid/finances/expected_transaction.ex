@@ -8,6 +8,7 @@ defmodule Firmowid.Finances.ExpectedTransaction do
 
   alias AshMoney.Types.Money
   alias Firmowid.Checks.AtLeastRole
+  alias Firmowid.Checks.SystemActorRole
   alias Firmowid.Resource
 
   require Resource
@@ -67,6 +68,10 @@ defmodule Firmowid.Finances.ExpectedTransaction do
   end
 
   policies do
+    bypass [{SystemActorRole, roles: [:analysis_reader]}, action([:read, :list])] do
+      authorize_if expr(not is_nil(^actor(:org_id)) and organization_id == ^actor(:org_id))
+    end
+
     policy action_type(:read) do
       authorize_if {AtLeastRole, role: :invoicing}
     end
