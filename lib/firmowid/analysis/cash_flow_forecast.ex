@@ -28,14 +28,14 @@ defmodule Firmowid.Analysis.CashFlowForecast do
           :sales_invoice | :cost_invoice | :payroll | :expected_transaction
 
   @type movement :: %{
+          optional(:member_id) => String.t(),
+          optional(:invoice_number) => String.t(),
           source: movement_source(),
           source_id: String.t(),
           date: Date.t(),
           amount: Money.t(),
           amount_pln: Decimal.t(),
-          label: String.t(),
-          optional(:member_id) => String.t(),
-          optional(:invoice_number) => String.t()
+          label: String.t()
         }
 
   @type account_snapshot :: %{
