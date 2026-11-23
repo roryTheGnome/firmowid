@@ -151,8 +151,8 @@ defmodule Firmowid.Analysis.CashFlowForecast do
     list_transaction_pages(read_scope, nil, [])
   end
 
-  defp list_transaction_pages(read_scope, after, acc) do
-    page = [limit: @transaction_page_size | if(after, do: [after: after], else: [])]
+  defp list_transaction_pages(read_scope, keyset, acc) do
+    page = [limit: @transaction_page_size | if(keyset, do: [after: keyset], else: [])]
 
     case Finances.list_transactions!(
            %{},
