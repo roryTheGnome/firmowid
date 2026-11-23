@@ -754,7 +754,9 @@ defmodule Firmowid.Analysis do
     end)
   end
 
-  defp analysis_scope(%Scope{tenant: tenant}) do
+  @doc false
+  @spec analysis_scope(Scope.t()) :: Scope.t()
+  def analysis_scope(%Scope{tenant: tenant}) do
     %Scope{actor: %SystemActor{org_id: tenant, role: :analysis_reader}, tenant: tenant}
   end
 
