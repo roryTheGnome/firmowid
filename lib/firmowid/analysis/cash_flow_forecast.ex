@@ -443,21 +443,25 @@ defmodule Firmowid.Analysis.CashFlowForecast do
   defp payroll_label(_), do: ""
 
   defp payroll_payout_amount(estimates) when is_list(estimates) do
-    case Enum.find(estimates, &(&1.basis == :profile)) do
-      %{amount: %Money{} = amount} when not Money.zero?(amount) ->
-        amount
+    profile_amount =
+      case Enum.find(estimates, &(&1.basis == :profile)) do
+        %{amount: %Money{} = amount} -> amount
+        _ -> nil
+      end
 
-      _ ->
-        estimates
-        |> Enum.reject(fn
-          %{amount: amount} -> is_nil(amount) or Money.zero?(amount)
-          _ -> true
-        end)
-        |> Enum.max_by(&Money.to_decimal(&1.amount), Decimal, fn -> nil end)
-        |> case do
-          %{amount: amount} -> amount
-          nil -> nil
-        end
+    if profile_amount && !Money.zero?(profile_amount) do
+      profile_amount
+    else
+      estimates
+      |> Enum.reject(fn
+        %{amount: amount} -> is_nil(amount) or Money.zero?(amount)
+        _ -> true
+      end)
+      |> Enum.max_by(&Money.to_decimal(&1.amount), Decimal, fn -> nil end)
+      |> case do
+        %{amount: amount} -> amount
+        nil -> nil
+      end
     end
   end
 
