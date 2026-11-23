@@ -207,7 +207,8 @@ defmodule Firmowid.Analysis.CashFlowForecast do
     read_scope = Analysis.analysis_scope(scope)
 
     collect_sales_inflow_movements(as_of, end_date, read_scope) ++
-      collect_cost_refund_movements(as_of, end_date, read_scope)
+      collect_cost_refund_movements(as_of, end_date, read_scope) ++
+      collect_cost_outflow_movements(as_of, end_date, read_scope)
   end
 
   @spec collect_sales_inflow_movements(Date.t(), Date.t(), Scope.t()) :: [movement()]
@@ -223,6 +224,14 @@ defmodule Firmowid.Analysis.CashFlowForecast do
     |> unpaid_cost_invoices()
     |> Enum.filter(&Money.positive?(&1.effective_amount))
     |> Enum.flat_map(&cost_refund_movement(&1, as_of, end_date))
+  end
+
+  @spec collect_cost_outflow_movements(Date.t(), Date.t(), Scope.t()) :: [movement()]
+  defp collect_cost_outflow_movements(as_of, end_date, read_scope) do
+    read_scope
+    |> unpaid_cost_invoices()
+    |> Enum.filter(&Money.negative?(&1.effective_amount))
+    |> Enum.flat_map(&cost_outflow_movement(&1, as_of, end_date))
   end
 
   @spec unpaid_sales_invoices(Scope.t()) :: [SalesInvoice.t()]
@@ -311,21 +320,33 @@ defmodule Firmowid.Analysis.CashFlowForecast do
     end
   end
 
+  defp cost_outflow_movement(%CostInvoice{} = invoice, as_of, end_date) do
+    with %Date{} = due <- invoice.effective_due_date,
+         %Money{} = amount <- outflow_money(invoice.effective_amount),
+         scheduled = clamp_scheduled_date(due, as_of),
+         true <- in_forecast_window?(scheduled, as_of, end_date) do
+      [outflow_movement(:cost_invoice, invoice.id, scheduled, amount, invoice.sale_date, movement_label(invoice))]
+    else
+      _ -> []
+    end
+  end
+
   defp movement_label(%SalesInvoice{buyer_display_name_label: label}) when is_binary(label), do: String.trim(label)
   defp movement_label(%SalesInvoice{}), do: ""
   defp movement_label(%CostInvoice{effective_seller_display_name: label}) when is_binary(label), do: String.trim(label)
   defp movement_label(%CostInvoice{}), do: ""
 
   defp inflow_movement(source, source_id, date, %Money{} = amount, sale_date, label, invoice_number) do
-    %{
-      source: source,
-      source_id: source_id,
-      date: date,
-      amount: amount,
-      amount_pln: inflow_amount_pln(amount, sale_date),
-      label: label
-    }
+    %{movement_fields(source, source_id, date, amount, sale_date, label) | amount_pln: inflow_amount_pln(amount, sale_date)}
     |> maybe_put_invoice_number(invoice_number)
+  end
+
+  defp outflow_movement(source, source_id, date, %Money{} = amount, sale_date, label) do
+    Map.put(movement_fields(source, source_id, date, amount, sale_date, label), :amount_pln, outflow_amount_pln(amount, sale_date))
+  end
+
+  defp movement_fields(source, source_id, date, %Money{} = amount, _sale_date, label) do
+    %{source: source, source_id: source_id, date: date, amount: amount, label: label}
   end
 
   defp maybe_put_invoice_number(movement, number) when is_binary(number) and number != "" do
@@ -336,6 +357,10 @@ defmodule Firmowid.Analysis.CashFlowForecast do
 
   defp inflow_money(%Money{} = amount) do
     if Money.positive?(amount), do: Money.abs(amount), else: nil
+  end
+
+  defp outflow_money(%Money{} = amount) do
+    if Money.negative?(amount), do: amount, else: nil
   end
 
   defp inflow_amount_pln(%Money{} = amount, %Date{} = sale_date) do
@@ -350,6 +375,13 @@ defmodule Firmowid.Analysis.CashFlowForecast do
 
   defp inflow_amount_pln(%Money{} = amount, _sale_date) do
     inflow_amount_pln(amount, Date.utc_today())
+  end
+
+  defp outflow_amount_pln(%Money{} = amount, sale_date) do
+    amount
+    |> Money.abs()
+    |> then(&inflow_amount_pln(&1, sale_date))
+    |> Decimal.negate()
   end
 
   defp clamp_scheduled_date(due, as_of) do
