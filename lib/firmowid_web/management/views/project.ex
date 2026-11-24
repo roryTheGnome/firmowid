@@ -16,6 +16,7 @@ defmodule FirmowidWeb.Management.Views.Project do
   alias Firmowid.TimeFormatter
   alias Firmowid.Timetracker
   alias Firmowid.Timetracker.Project
+  alias Firmowid.Timetracker.ProjectBudget
   alias FirmowidUI.Components.Inputs
   alias FirmowidWeb.Management.Utilities.CounterpartyHelpers
   alias FirmowidWeb.Management.Utilities.Navigation
@@ -164,6 +165,7 @@ defmodule FirmowidWeb.Management.Views.Project do
     |> assign(:previous_month_label, nil)
     |> assign(:hours_delta, nil)
     |> assign(:cost_delta, nil)
+    |> assign_budget_usage()
   end
 
   # ── Active project: current month + previous month delta ──────────────
@@ -237,6 +239,13 @@ defmodule FirmowidWeb.Management.Views.Project do
     |> assign(:previous_month_label, previous_month_label)
     |> assign(:hours_delta, percent_delta(current_total_time, prev_total_time))
     |> assign(:cost_delta, percent_delta(current_total_cost, prev_total_cost))
+    |> assign_budget_usage()
+  end
+
+  defp assign_budget_usage(socket) do
+    %{project: project, selected_date: selected_date, ash_scope: scope} = socket.assigns
+
+    assign(socket, :budget_usage, ProjectBudget.usage(project, selected_date, scope))
   end
 
   # Build per-user cost maps. `project.members` gives current members; sessions
@@ -345,6 +354,93 @@ defmodule FirmowidWeb.Management.Views.Project do
     ~H"""
     {@before_name}<b>{@name}</b>{@after_name}
     """
+  end
+
+  @doc false
+  def budget_card_title(%{kind: :hours}), do: gettext("Hours budget")
+  def budget_card_title(%{kind: :amount}), do: gettext("Amount budget")
+
+  @doc false
+  def budget_main_text(usage) do
+    gettext("%{used} / %{limit}",
+      used: budget_quantity_text(usage, :used),
+      limit: budget_quantity_text(usage, :limit)
+    )
+  end
+
+  @doc false
+  def budget_percent_text(%{percent: percent}) do
+    gettext("%{percent}% used",
+      percent:
+        percent
+        |> Decimal.round(0)
+        |> Decimal.to_string(:normal)
+    )
+  end
+
+  @doc false
+  def budget_remaining_text(%{kind: kind, remaining: remaining}) do
+    cond do
+      Decimal.compare(remaining, 0) == :lt ->
+        over = Decimal.abs(remaining)
+
+        gettext("Over by %{amount}",
+          amount: budget_quantity_text(%{kind: kind}, :remaining, over)
+        )
+
+      Decimal.equal?(remaining, 0) ->
+        gettext("Fully used")
+
+      true ->
+        gettext("%{amount} remaining",
+          amount: budget_quantity_text(%{kind: kind}, :used, remaining)
+        )
+    end
+  end
+
+  @doc false
+  def budget_period_text(%{period: %{scope: :monthly, starts_on: starts_on}}) do
+    gettext("Limit for %{month}",
+      month: Cldr.Date.to_string!(starts_on, Firmowid.Cldr, format: "LLLL yyyy")
+    )
+  end
+
+  def budget_period_text(%{period: %{scope: :engagement, starts_on: starts_on, ends_on: ends_on}}) do
+    gettext("From %{from} to %{to}",
+      from: Cldr.Date.to_string!(starts_on, Firmowid.Cldr, format: :long),
+      to: Cldr.Date.to_string!(ends_on, Firmowid.Cldr, format: :long)
+    )
+  end
+
+  @doc false
+  def budget_progress_width(%{percent: percent}) do
+    percent
+    |> Decimal.min(Decimal.new(100))
+    |> Decimal.round(0)
+    |> Decimal.to_integer()
+  end
+
+  @doc false
+  def budget_progress_bar_class(:ok), do: "h-full rounded-full bg-teal-700 transition-all"
+  def budget_progress_bar_class(:warning), do: "h-full rounded-full bg-teal-500 transition-all"
+  def budget_progress_bar_class(:exceeded), do: "h-full rounded-full bg-brick-600 transition-all"
+
+  defp budget_quantity_text(%{kind: :hours}, _field, hours) do
+    hours
+    |> Decimal.mult(Decimal.new(3600))
+    |> Decimal.round(0)
+    |> Decimal.to_integer()
+    |> TimeFormatter.format_duration()
+  end
+
+  defp budget_quantity_text(%{kind: :amount}, _field, amount) do
+    :PLN
+    |> Money.new(amount)
+    |> Money.to_string!(fractional_digits: 0)
+  end
+
+  defp budget_quantity_text(usage, field) do
+    budget_quantity_text(usage, field, Map.fetch!(usage, field))
   end
 
   def comparison_text(%{percent: percent, direction: direction}, previous_month_label) do

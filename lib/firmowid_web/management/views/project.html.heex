@@ -27,6 +27,20 @@
           >
             <Lucideicons.archive class="size-4" /> {gettext("archived")}
           </span>
+          <span
+            :if={@budget_usage && @budget_usage.status == :warning}
+            class="inline-flex items-center gap-2 rounded-full bg-teal-200 px-4 py-1 text-sm/snug font-normal text-teal-800"
+          >
+            <Lucideicons.triangle_alert class="size-4" />
+            {gettext("Budget nearly exhausted")}
+          </span>
+          <span
+            :if={@budget_usage && @budget_usage.status == :exceeded}
+            class="inline-flex items-center gap-2 rounded-full bg-brick-100 px-4 py-1 text-sm/snug font-normal text-brick-700"
+          >
+            <Lucideicons.triangle_alert class="size-4" />
+            {gettext("Budget exceeded")}
+          </span>
         </p>
       </div>
 
@@ -144,6 +158,33 @@
               </p>
             <% true -> %>
           <% end %>
+        </div>
+
+        <div :if={@budget_usage} class="rounded-sm bg-white p-4">
+          <p class="mb-6 leading-snug text-grey-500">{budget_card_title(@budget_usage)}</p>
+          <p class="mb-3 text-lg/tight font-medium text-black text-nowrap">
+            {budget_main_text(@budget_usage)}
+          </p>
+
+          <div class="mb-3 h-2 w-full overflow-hidden rounded-full bg-grey-200">
+            <div
+              class={budget_progress_bar_class(@budget_usage.status)}
+              style={"width: #{budget_progress_width(@budget_usage)}%"}
+            />
+          </div>
+
+          <p class="mb-1 text-sm/snug text-grey-700">{budget_percent_text(@budget_usage)}</p>
+          <p class={[
+            "text-sm/snug",
+            case @budget_usage.status do
+              :exceeded -> "text-brick-700"
+              :warning -> "text-teal-800"
+              :ok -> "text-grey-500"
+            end
+          ]}>
+            {budget_remaining_text(@budget_usage)}
+          </p>
+          <p class="mt-1 text-sm/snug text-grey-500">{budget_period_text(@budget_usage)}</p>
         </div>
       </div>
       <div class="space-y-4 rounded-sm bg-white p-4">
