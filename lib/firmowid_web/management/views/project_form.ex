@@ -46,7 +46,7 @@ defmodule FirmowidWeb.Management.Views.ProjectForm do
   def handle_event("validate", %{"project" => params}, socket) do
     form =
       socket.assigns.form
-      |> AshPhoenix.Form.validate(params)
+      |> AshPhoenix.Form.validate(project_params(params, socket.assigns.project_users))
       |> to_form()
 
     {:noreply, assign(socket, :form, form)}
@@ -169,8 +169,91 @@ defmodule FirmowidWeb.Management.Views.ProjectForm do
       |> Enum.map(& &1.user.member.id)
 
     params
-    |> Map.take(["name"])
+    |> Map.take([
+      "name",
+      "budget_kind",
+      "budget_scope",
+      "budget_limit",
+      "budget_engagement_starts_on",
+      "budget_engagement_ends_on"
+    ])
     |> Map.put("member_ids", member_ids)
+    |> normalize_budget_params()
+  end
+
+  defp normalize_budget_params(%{"budget_kind" => kind} = params) when kind in [nil, ""] do
+    Map.merge(params, %{
+      "budget_kind" => nil,
+      "budget_scope" => nil,
+      "budget_limit" => nil,
+      "budget_engagement_starts_on" => nil,
+      "budget_engagement_ends_on" => nil
+    })
+  end
+
+  defp normalize_budget_params(params), do: params
+
+  @doc false
+  def budget_section_open?(form, project) do
+    budget_configured?(form) or match?(%Project{budget_kind: kind} when not is_nil(kind), project)
+  end
+
+  @doc false
+  def budget_configured?(form) do
+    form[:budget_kind].value not in [nil, ""]
+  end
+
+  @doc false
+  def engagement_scope?(form) do
+    to_string(form[:budget_scope].value) == "engagement"
+  end
+
+  @doc false
+  def budget_kind_selected?(form, kind) when is_nil(kind) do
+    form[:budget_kind].value in [nil, ""]
+  end
+
+  def budget_kind_selected?(form, kind) do
+    to_string(form[:budget_kind].value) == to_string(kind)
+  end
+
+  @doc false
+  def budget_scope_selected?(form, scope) do
+    to_string(form[:budget_scope].value) == to_string(scope)
+  end
+
+  @doc false
+  def budget_limit_label(form) do
+    case to_string(form[:budget_kind].value) do
+      "hours" -> gettext("Hour limit")
+      "amount" -> gettext("Amount limit (PLN)")
+      _ -> gettext("Limit")
+    end
+  end
+
+  attr :form, :map, required: true
+  attr :field, :atom, required: true
+  attr :value, :string, required: true
+  attr :selected, :boolean, required: true
+  attr :label, :string, required: true
+  attr :hint, :string, default: nil
+
+  defp budget_field_option(assigns) do
+    ~H"""
+    <label class="flex cursor-pointer flex-row items-start gap-2">
+      <input
+        type="radio"
+        name={@form[@field].name}
+        value={@value}
+        checked={@selected}
+        class="mt-0.5 size-5 shrink-0 appearance-none rounded-full border-2 border-grey-300 bg-white text-teal-700 checked:bg-teal-700 focus:outline-none"
+      />
+      <div class="min-w-0">
+        <span class="font-medium">{@label}</span>
+        <p :if={@hint} class="text-sm/snug text-grey-500">{@hint}</p>
+      </div>
+    </label>
+    """
   end
 
   # Resolve a user by ID: prefer already-loaded project members, fall back to Core.
