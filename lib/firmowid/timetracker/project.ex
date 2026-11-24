@@ -14,6 +14,7 @@ defmodule Firmowid.Timetracker.Project do
   engagement period. Usage tracking and alerts are built on top of these fields.
   """
   use Ash.Resource,
+    simple_notifiers: [Firmowid.Core.Notifiers.InboxChanged],
     domain: Firmowid.Timetracker,
     data_layer: AshPostgres.DataLayer,
     authorizers: [Ash.Policy.Authorizer],

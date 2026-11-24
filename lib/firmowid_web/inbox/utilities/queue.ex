@@ -5,9 +5,9 @@ defmodule FirmowidWeb.Inbox.Utilities.Queue do
 
   Uses policy-scoped domain reads for integration alerts, counterparty EU VAT
   numbers that the periodic check rejected, company details that contradict the
-  registers, team approvals, personal signatures and settlements, overdue
-  invoices, expected payments that have not arrived and sales invoices the KSeF
-  import skipped; usage above the billing plan comes from
+  registers, team approvals, active projects nearing or over budget, personal
+  signatures and settlements, overdue invoices, expected payments that have not
+  arrived and sales invoices the KSeF import skipped; usage above the billing plan comes from
   `Firmowid.Billing.PlanLimits`. Each item links to the page
   where it is dealt with; pending leave requests also offer inline decisions.
   Items for information only (`:info`) ask nothing of the company and link
@@ -34,6 +34,7 @@ defmodule FirmowidWeb.Inbox.Utilities.Queue do
   alias Firmowid.Payroll
   alias Firmowid.Taxes
   alias Firmowid.Timetracker
+  alias Firmowid.Timetracker.ProjectBudget
   alias FirmowidWeb.Billing.Utilities.Navigation, as: BillingNavigation
   alias FirmowidWeb.Billing.Utilities.Worksheet
   alias FirmowidWeb.Delegations.Utilities.DelegationPresentation
@@ -100,7 +101,10 @@ defmodule FirmowidWeb.Inbox.Utilities.Queue do
       tax_profile_items(scope, organization) ++
       bank_items(scope) ++
       vat_id_items(scope) ++
-      leave_items(scope) ++ hours_change_items(scope) ++ company_delegation_items(scope)
+      leave_items(scope) ++
+        hours_change_items(scope) ++
+        project_budget_items(scope) ++
+        company_delegation_items(scope)
   end
 
   def attention_items(_scope, _organization), do: []
@@ -425,6 +429,67 @@ defmodule FirmowidWeb.Inbox.Utilities.Queue do
         ]
     end
   end
+
+  defp project_budget_items(scope) do
+    today = Firmowid.LocalDate.today()
+
+    %{status: :active}
+    |> Timetracker.list_projects!(scope: scope)
+    |> Enum.filter(&(not is_nil(&1.budget_kind)))
+    |> Enum.map(fn project -> {project, ProjectBudget.usage(project, today, scope)} end)
+    |> Enum.filter(fn {_project, usage} -> usage && usage.status in [:warning, :exceeded] end)
+    |> Enum.sort_by(fn {_project, usage} -> usage.percent end, {:desc, Decimal})
+    |> Enum.map(&project_budget_item/1)
+  end
+
+  defp project_budget_item({project, usage}) do
+    %{
+      id: "project-budget-#{project.id}-#{usage.period.key}-#{usage.status}",
+      tier: :urgent,
+      icon: "folder-kanban",
+      title: project_budget_title(project, usage),
+      context: project_budget_context(usage),
+      person: nil,
+      action: gettext("Open project"),
+      href: ManagementNavigation.project_path(project.id, %{miesiac: usage.period.starts_on})
+    }
+  end
+
+  defp project_budget_title(project, %{status: :exceeded}),
+    do: gettext("Project budget exceeded: %{name}", name: project.name)
+
+  defp project_budget_title(project, %{status: :warning}),
+    do: gettext("Project budget nearly exhausted: %{name}", name: project.name)
+
+  defp project_budget_context(usage) do
+    gettext("%{percent}% used (%{used} of %{limit})",
+      percent: usage.percent |> Decimal.round(0) |> Decimal.to_string(:normal),
+      used: budget_usage_quantity(usage, :used),
+      limit: budget_usage_quantity(usage, :limit)
+    )
+  end
+
+  defp budget_usage_quantity(%{kind: :hours} = usage, field) do
+    usage
+    |> Map.fetch!(field)
+    |> hours_to_duration()
+  end
+
+  defp budget_usage_quantity(%{kind: :amount} = usage, field) do
+    usage
+    |> Map.fetch!(field)
+    |> money_pln()
+  end
+
+  defp hours_to_duration(hours) do
+    hours
+    |> Decimal.mult(Decimal.new(3600))
+    |> Decimal.round(0)
+    |> Decimal.to_integer()
+    |> Firmowid.TimeFormatter.format_duration()
+  end
+
+  defp money_pln(amount), do: Money.to_string!(Money.new(:PLN, amount), fractional_digits: 0)
 
   defp hours_change_items(scope) do
     %{pending_change?: true}
