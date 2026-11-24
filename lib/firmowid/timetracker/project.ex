@@ -315,21 +315,21 @@ defmodule Firmowid.Timetracker.Project do
       public? true
       allow_nil? true
       constraints one_of: [:hours, :amount]
-      description: "Hours or amount budget; nil means the project has no budget."
+      description "Hours or amount budget; nil means the project has no budget."
     end
 
     attribute :budget_scope, :atom do
       public? true
       allow_nil? true
       constraints one_of: [:monthly, :engagement]
-      description: "Whether the limit applies per calendar month or across an engagement."
+      description "Whether the limit applies per calendar month or across an engagement."
     end
 
     attribute :budget_limit, :decimal do
       public? true
       allow_nil? true
       constraints greater_than: 0
-      description: "Budget cap in hours or PLN, depending on `budget_kind`."
+      description "Budget cap in hours or PLN, depending on budget_kind."
     end
 
     attribute :budget_engagement_starts_on, :date,
