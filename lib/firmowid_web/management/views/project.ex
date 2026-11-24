@@ -114,6 +114,11 @@ defmodule FirmowidWeb.Management.Views.Project do
     end
   end
 
+  @impl true
+  def handle_info(:inbox_refresh, socket) do
+    {:noreply, assign_project_data(socket)}
+  end
+
   def handle_event("delete_project", _, socket) do
     scope = socket.assigns.ash_scope
     project = socket.assigns.project

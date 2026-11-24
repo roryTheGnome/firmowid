@@ -41,6 +41,11 @@ defmodule Firmowid.Timetracker.ProjectBudget do
   For monthly budgets the period is the calendar month of `reference_date`. For
   engagement budgets it runs from `budget_engagement_starts_on` to
   `budget_engagement_ends_on`.
+
+  Live surfaces recompute on demand — there is no stored usage row. Inbox and
+  admin project views refresh through `Firmowid.Core.Notifiers.InboxChanged`
+  when sessions, project budget settings, salary rates, cost invoices, or
+  project tags on invoices change.
   """
   @spec usage(Project.t(), Date.t(), Scope.t()) :: usage() | nil
   def usage(%Project{budget_kind: nil}, _reference_date, _scope), do: nil
