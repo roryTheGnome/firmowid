@@ -198,7 +198,7 @@ defmodule Firmowid.Timetracker.ProjectBudget do
         merge_corrections: true
       },
       scope: scope,
-      load: [entity_tags: [:tag_definition], :effective_amount]
+      load: [:effective_amount, entity_tags: [:tag_definition]]
     )
     |> Enum.filter(fn invoice ->
       Date.compare(Analysis.entry_month(invoice), period.starts_on) != :lt and
