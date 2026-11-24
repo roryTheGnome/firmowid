@@ -163,7 +163,7 @@ defmodule Firmowid.Timetracker.Project do
       change manage_relationship(:member_ids, :members, type: :append_and_remove)
       change CreateProjectTag
       change NormalizeProjectBudget,
-        where: [changing(:budget_kind, :budget_scope)]
+        where: any([changing(:budget_kind), changing(:budget_scope)])
 
       validate ProjectBudget
     end
@@ -188,7 +188,7 @@ defmodule Firmowid.Timetracker.Project do
       change manage_relationship(:member_ids, :members, type: :append_and_remove)
       change SyncProjectTagName, where: [changing(:name)]
       change NormalizeProjectBudget,
-        where: [changing(:budget_kind, :budget_scope)]
+        where: any([changing(:budget_kind), changing(:budget_scope)])
 
       validate ProjectBudget
     end
