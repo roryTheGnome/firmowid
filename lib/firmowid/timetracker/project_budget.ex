@@ -5,8 +5,13 @@ defmodule Firmowid.Timetracker.ProjectBudget do
   Hours budgets count logged session time in the period. Amount budgets add the
   salary cost of that time, priced like the project page, plus the PLN share of
   tagged cost invoices allocated to the project's analysis tag.
+
+  Only organization admins may read budget configuration or computed usage;
+  other members must not see limits, spend, or salary-derived amounts through
+  this module.
   """
   alias Firmowid.Analysis
+  alias Firmowid.Checks.ActorRole
   alias Firmowid.Analysis.CategoryTotals
   alias Firmowid.Invoicing
   alias Firmowid.Payroll
@@ -45,12 +50,39 @@ defmodule Firmowid.Timetracker.ProjectBudget do
   Live surfaces recompute on demand — there is no stored usage row. Inbox and
   admin project views refresh through `Firmowid.Core.Notifiers.InboxChanged`
   when sessions, project budget settings, salary rates, cost invoices, or
-  project tags on invoices change.
+  project tags on invoices change. Callers outside admin views should treat
+  `nil` as “no budget visible”.
   """
   @spec usage(Project.t(), Date.t(), Scope.t()) :: usage() | nil
-  def usage(%Project{budget_kind: nil}, _reference_date, _scope), do: nil
+  def usage(project, reference_date, scope) do
+    with true <- admin_scope?(scope),
+         true <- budget_configured?(project) do
+      compute_usage(project, reference_date, scope)
+    else
+      _ -> nil
+    end
+  end
 
-  def usage(%Project{} = project, reference_date, scope) do
+  @doc """
+  Computes budget usage for each project that has one, keyed by project id.
+  """
+  @spec usage_by_project([Project.t()], Date.t(), Scope.t()) :: %{String.t() => usage()}
+  def usage_by_project(projects, reference_date, scope) do
+    if admin_scope?(scope) do
+      do_usage_by_project(projects, reference_date, scope)
+    else
+      %{}
+    end
+  end
+
+  defp do_usage_by_project(projects, reference_date, scope) do
+    projects
+    |> Enum.filter(&budget_configured?/1)
+    |> Enum.map(fn project -> {project.id, compute_usage(project, reference_date, scope)} end)
+    |> Map.new()
+  end
+
+  defp compute_usage(%Project{} = project, reference_date, scope) do
     period = period(project, reference_date)
     limit = project.budget_limit
 
@@ -74,16 +106,14 @@ defmodule Firmowid.Timetracker.ProjectBudget do
     }
   end
 
-  @doc """
-  Computes budget usage for each project that has one, keyed by project id.
-  """
-  @spec usage_by_project([Project.t()], Date.t(), Scope.t()) :: %{String.t() => usage()}
-  def usage_by_project(projects, reference_date, scope) do
-    projects
-    |> Enum.filter(&(not is_nil(&1.budget_kind)))
-    |> Enum.map(fn project -> {project.id, usage(project, reference_date, scope)} end)
-    |> Map.new()
-  end
+  defp budget_configured?(%Project{budget_kind: kind, budget_limit: limit})
+       when kind in [:hours, :amount] and not is_nil(limit),
+       do: true
+
+  defp budget_configured?(_), do: false
+
+  defp admin_scope?(%Scope{actor: actor} = scope),
+    do: ActorRole.role(actor, scope) == :admin
 
   @doc "Whether `date` falls inside a budget period."
   @spec period_active?(period(), Date.t()) :: boolean()

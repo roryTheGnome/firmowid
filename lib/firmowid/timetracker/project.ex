@@ -11,7 +11,9 @@ defmodule Firmowid.Timetracker.Project do
   user membership, ParadeDB search, ID set, tag definition).
 
   Admins may optionally set a budget in hours or PLN, monthly or for a fixed
-  engagement period. Usage tracking and alerts are built on top of these fields.
+  engagement period. Budget fields are readable only by admins; members on the
+  project see the name and assignments only. Usage tracking and alerts are
+  built on top of these fields.
   """
   use Ash.Resource,
     simple_notifiers: [Firmowid.Core.Notifiers.InboxChanged],
@@ -276,6 +278,24 @@ defmodule Firmowid.Timetracker.Project do
 
     policy action_type([:create, :update, :destroy]) do
       authorize_if {ActorRole, role: :admin}
+    end
+  end
+
+  field_policies do
+    private_fields :include
+
+    field_policy [
+      :budget_kind,
+      :budget_scope,
+      :budget_limit,
+      :budget_engagement_starts_on,
+      :budget_engagement_ends_on
+    ] do
+      authorize_if {ActorRole, role: :admin}
+    end
+
+    field_policy :* do
+      authorize_if always()
     end
   end
 
