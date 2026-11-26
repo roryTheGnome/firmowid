@@ -9,6 +9,7 @@ defmodule FirmowidWeb.Management.Components.EmployeePayoutDetails do
 
   alias Ash.Error.Changes.InvalidAttribute
   alias Firmowid.Payroll
+  alias Firmowid.Payroll.StartsAt
   alias Firmowid.TimeFormatter
 
   @impl true
@@ -86,6 +87,13 @@ defmodule FirmowidWeb.Management.Components.EmployeePayoutDetails do
                     <p>{gettext("PLN/h")}</p>
                   </div>
                 </.user_card_info>
+                <.user_card_info
+                  label={pgettext("hourly rate", "Effective from")}
+                  for={@form[:starts_at].id}
+                  class="text-nowrap"
+                >
+                  <.input field={@form[:starts_at]} type="date" input_class="max-w-36" />
+                </.user_card_info>
               <% else %>
                 <.user_card_info label={pgettext("hourly rate", "Rate")} class="text-nowrap">
                   <div class="min-h-8.5">
@@ -152,17 +160,14 @@ defmodule FirmowidWeb.Management.Components.EmployeePayoutDetails do
 
   # The rate and the account are saved together or not at all; a refusal keeps the editor
   # open with what was typed.
-  def handle_event(
-        "save_payout",
-        %{"hourly_rate" => hourly_rate, "bank_account_number" => bank_account_number} = params,
-        socket
-      ) do
+  def handle_event("save_payout", params, socket) do
     %{user: user, scope: scope} = socket.assigns
 
     attributes = %{
-      hourly_rate: hourly_rate,
+      hourly_rate: params["hourly_rate"],
       member_id: user.member.id,
-      bank_account_number: bank_account_number
+      starts_at: StartsAt.parse(params["starts_at"]),
+      bank_account_number: params["bank_account_number"]
     }
 
     case Payroll.create_salary(attributes, scope: scope) do
@@ -228,6 +233,7 @@ defmodule FirmowidWeb.Management.Components.EmployeePayoutDetails do
       :form,
       to_form(%{
         "hourly_rate" => hourly_rate,
+        "starts_at" => Date.to_iso8601(Date.utc_today()),
         "bank_account_number" => user.member.bank_account_number
       })
     )

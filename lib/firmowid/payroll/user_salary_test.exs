@@ -33,7 +33,32 @@ defmodule Firmowid.Payroll.UserSalaryTest do
 
       assert Decimal.equal?(salary.hourly_rate, Decimal.new("100.00"))
       assert salary.member_id == user.member.id
-      assert DateTime.compare(salary.starts_at, DateTime.utc_now()) in [:lt, :eq]
+
+      assert salary.starts_at ==
+               DateTime.new!(Date.utc_today(), ~T[00:00:00], "Etc/UTC")
+    end
+
+    test "allows the same rate with a different future start date", %{user: user, scope: scope} do
+      {:ok, current} =
+        Payroll.create_salary(
+          %{member_id: user.member.id, hourly_rate: Decimal.new("100.00")},
+          scope: scope
+        )
+
+      future_starts_at = DateTime.new!(Date.add(Date.utc_today(), 30), ~T[00:00:00], "Etc/UTC")
+
+      assert {:ok, upcoming} =
+               Payroll.create_salary(
+                 %{
+                   member_id: user.member.id,
+                   hourly_rate: Decimal.new("100.00"),
+                   starts_at: future_starts_at
+                 },
+                 scope: scope
+               )
+
+      assert upcoming.id != current.id
+      assert DateTime.compare(upcoming.starts_at, current.starts_at) == :gt
     end
 
     test "rejects a member of another organization", %{scope: scope} do

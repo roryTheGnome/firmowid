@@ -42,6 +42,7 @@ defmodule Firmowid.Payroll.UserSalary do
         description "When given, replaces the member's bank account number in the same transaction; empty clears it."
       end
 
+      change Firmowid.Payroll.Changes.NormalizeStartsAt
       change {Firmowid.Payroll.Changes.SkipUnchangedRate, []}
       change Firmowid.Payroll.Changes.UpdateMemberBankAccount
     end
@@ -151,7 +152,7 @@ defmodule Firmowid.Payroll.UserSalary do
     attribute :starts_at, :utc_datetime do
       public? true
       allow_nil? false
-      default &DateTime.utc_now/0
+      default fn -> Firmowid.Payroll.StartsAt.parse(nil) end
     end
 
     Resource.firmowid_timestamps()

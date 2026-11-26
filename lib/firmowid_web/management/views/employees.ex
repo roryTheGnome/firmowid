@@ -20,6 +20,7 @@ defmodule FirmowidWeb.Management.Views.Employees do
   alias Firmowid.Core
   alias Firmowid.Core.UserRole
   alias Firmowid.Payroll
+  alias Firmowid.Payroll.StartsAt
   alias Firmowid.Timetracker
   alias Firmowid.Timetracker.Session
   alias FirmowidUI.Components.Inputs
@@ -227,11 +228,13 @@ defmodule FirmowidWeb.Management.Views.Employees do
     # The rate goes to the action as typed, so a cleared field fails its validation.
     entries =
       Enum.flat_map(socket.assigns.employees, fn employee ->
-        hourly_rate = employees_params[employee.user.id]["wage"]
+        employee_params = Map.get(employees_params, employee.user.id, %{})
+        hourly_rate = employee_params["wage"]
+        starts_at = StartsAt.parse(employee_params["starts_at"])
 
-        if same_rate?(employee.hourly_rate, hourly_rate),
+        if unchanged_wage?(employee.hourly_rate, hourly_rate, employee_params),
           do: [],
-          else: [%{member_id: employee.user.member.id, hourly_rate: hourly_rate}]
+          else: [%{member_id: employee.user.member.id, hourly_rate: hourly_rate, starts_at: starts_at}]
       end)
 
     case Payroll.bulk_create_salaries(entries, scope: scope) do
@@ -489,6 +492,10 @@ defmodule FirmowidWeb.Management.Views.Employees do
 
   # The shown rate field is as wide as its digits (tabular, one `ch` each).
   defp rate_width(rate), do: (rate || 0) |> Decimal.round() |> Decimal.to_string() |> String.length()
+
+  defp unchanged_wage?(current_rate, typed_rate, params) do
+    same_rate?(current_rate, typed_rate) and is_nil(params["starts_at"])
+  end
 
   defp same_rate?(nil, _typed), do: false
 
