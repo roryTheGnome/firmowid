@@ -538,6 +538,11 @@ msgstr ""
 msgid "%{project}, the project that earns most"
 msgstr ""
 
+#: lib/firmowid_web/management/views/project_budget_spending.ex
+#, elixir-autogen, elixir-format
+msgid "%{project} — budget spending"
+msgstr ""
+
 #: lib/firmowid_web/assistant/components/invoice.ex
 #, elixir-autogen, elixir-format
 msgid "%{quantity} %{unit} × %{price} net"
@@ -720,6 +725,11 @@ msgstr ""
 #: lib/firmowid_web/landing/components/sections.ex
 #, elixir-autogen, elixir-format
 msgid "A budget that is outdated the day it is created"
+msgstr ""
+
+#: lib/firmowid_web/management/views/project_budget_spending.html.heex
+#, elixir-autogen, elixir-format
+msgid "Budget spending"
 msgstr ""
 
 #: lib/firmowid_web/invoicing/sales_invoices/views/show.ex
@@ -8516,6 +8526,11 @@ msgstr ""
 msgid "No counterparty found for the given NIP"
 msgstr ""
 
+#: lib/firmowid_web/management/views/project_budget_spending.html.heex
+#, elixir-autogen, elixir-format
+msgid "No cost invoice tagged to this project was found in the selected period."
+msgstr ""
+
 #: lib/firmowid_web/management/components/employee_payout_details.ex
 #, elixir-autogen, elixir-format
 msgid "No data"
@@ -10133,6 +10148,11 @@ msgstr ""
 #: lib/firmowid_web/management/views/projects.html.heex
 #, elixir-autogen, elixir-format
 msgid "Project scope"
+msgstr ""
+
+#: lib/firmowid_web/management/views/project_budget_spending.html.heex
+#, elixir-autogen, elixir-format
+msgid "Project share"
 msgstr ""
 
 #: lib/firmowid_web/billing/utilities/worksheet.ex
@@ -12067,6 +12087,11 @@ msgstr ""
 msgid "Take back the cancellation request"
 msgstr ""
 
+#: lib/firmowid_web/management/views/project_budget_spending.html.heex
+#, elixir-autogen, elixir-format
+msgid "Tagged cost invoices"
+msgstr ""
+
 #: lib/firmowid_web/hours_record/components/document.ex
 #, elixir-autogen, elixir-format
 msgid "Take back the correction request"
@@ -13464,6 +13489,11 @@ msgstr ""
 msgid "This payout needs an individual review"
 msgstr ""
 
+#: lib/firmowid_web/management/views/project_budget_spending.ex
+#, elixir-autogen, elixir-format
+msgid "This project has no budget."
+msgstr ""
+
 #: lib/firmowid_web/billing/views/plan_limit.ex
 #, elixir-autogen, elixir-format
 msgid "This plan includes everything your company uses now."
@@ -14445,6 +14475,11 @@ msgstr ""
 #: lib/firmowid_web/core/toast.ex
 #, elixir-autogen, elixir-format
 msgid "View"
+msgstr ""
+
+#: lib/firmowid_web/management/views/project.html.heex
+#, elixir-autogen, elixir-format
+msgid "View budget spending"
 msgstr ""
 
 #: lib/firmowid_web/invoicing/sales_invoices/views/creator_counterparty.html.heex

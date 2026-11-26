@@ -189,6 +189,69 @@ defmodule Firmowid.Timetracker.ProjectBudgetTest do
     end
   end
 
+  describe "spending_breakdown/3" do
+    test "returns nil without a budget" do
+      admin = admin_fixture()
+      scope = scope(admin)
+      project = project_fixture(%{organization_id: admin.member.organization_id})
+
+      assert ProjectBudget.spending_breakdown(project, Date.utc_today(), scope) == nil
+      assert ProjectBudget.usage(project, Date.utc_today(), scope) == nil
+    end
+
+    test "totals match usage for a hours budget" do
+      admin = admin_fixture()
+      scope = scope(admin)
+      project = budget_project!(admin, %{budget_kind: :hours, budget_limit: Decimal.new("100")})
+
+      month = Date.utc_today() |> Date.beginning_of_month()
+
+      start_datetime =
+        month |> Date.add(2) |> DateTime.new!(~T[10:00:00], "Etc/UTC")
+
+      finish_datetime = DateTime.add(start_datetime, 2 * 3600, :second)
+
+      log_hours!(admin, project, start_datetime, finish_datetime)
+
+      breakdown = ProjectBudget.spending_breakdown(project, month, scope)
+      usage = ProjectBudget.usage(project, month, scope)
+
+      assert breakdown.total_time_worked == 2 * 3600
+      assert Decimal.equal?(ProjectBudget.spending_components_used(breakdown), usage.used)
+      assert Decimal.equal?(usage.used, Decimal.new("2"))
+    end
+
+    test "totals match usage for an amount budget" do
+      admin = admin_fixture()
+      scope = scope(admin)
+
+      user_salary_fixture(%{
+        user_id: admin.id,
+        organization_id: admin.member.organization_id,
+        hourly_rate: Decimal.new("100")
+      })
+
+      project = budget_project!(admin, %{budget_kind: :amount, budget_limit: Decimal.new("1000")})
+
+      month = Date.utc_today() |> Date.beginning_of_month()
+
+      start_datetime =
+        month |> Date.add(2) |> DateTime.new!(~T[10:00:00], "Etc/UTC")
+
+      finish_datetime = DateTime.add(start_datetime, 2 * 3600, :second)
+
+      log_hours!(admin, project, start_datetime, finish_datetime)
+
+      breakdown = ProjectBudget.spending_breakdown(project, month, scope)
+      usage = ProjectBudget.usage(project, month, scope)
+
+      assert Decimal.equal?(breakdown.total_employee_cost, Decimal.new("200"))
+      assert Decimal.equal?(breakdown.total_invoice_cost, Decimal.new(0))
+      assert Decimal.equal?(ProjectBudget.spending_components_used(breakdown), usage.used)
+      assert Decimal.equal?(usage.used, Decimal.new("200"))
+    end
+  end
+
   defp scope(admin), do: Scope.new!(admin, admin.member.organization_id)
 
   defp budget_project!(admin, attrs) do
