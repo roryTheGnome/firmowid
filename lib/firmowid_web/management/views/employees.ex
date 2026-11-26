@@ -155,12 +155,11 @@ defmodule FirmowidWeb.Management.Views.Employees do
       )
 
     active_salary_by_member = Map.new(salaries, &{&1.member_id, &1})
-    today = Date.utc_today()
 
     upcoming_salary_by_member =
       Payroll.list_salaries!(%{},
         query: [
-          filter: expr(type(starts_at, :date) > ^today),
+          filter: [starts_at: [greater_than: StartsAt.parse(nil)]],
           sort: [starts_at: :asc]
         ],
         scope: scope
