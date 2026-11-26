@@ -194,13 +194,16 @@ defmodule FirmowidWeb.Management.Views.ProjectForm do
   defp normalize_budget_params(params), do: params
 
   @doc false
-  def budget_section_open?(form, project) do
-    budget_configured?(form) or match?(%Project{budget_kind: kind} when not is_nil(kind), project)
+  def budget_configured?(form) do
+    form[:budget_kind].value not in [nil, ""]
   end
 
   @doc false
-  def budget_configured?(form) do
-    form[:budget_kind].value not in [nil, ""]
+  def budget_dependent_fields_disabled?(form), do: not budget_configured?(form)
+
+  @doc false
+  def engagement_dates_disabled?(form) do
+    budget_dependent_fields_disabled?(form) or not engagement_scope?(form)
   end
 
   @doc false
@@ -237,16 +240,22 @@ defmodule FirmowidWeb.Management.Views.ProjectForm do
   attr :selected, :boolean, required: true
   attr :label, :string, required: true
   attr :hint, :string, default: nil
+  attr :disabled, :boolean, default: false
 
   defp budget_field_option(assigns) do
     ~H"""
-    <label class="flex cursor-pointer flex-row items-start gap-2">
+    <label class={[
+      "flex flex-row items-start gap-2",
+      @disabled && "cursor-not-allowed opacity-50",
+      !@disabled && "cursor-pointer"
+    ]}>
       <input
         type="radio"
         name={@form[@field].name}
         value={@value}
         checked={@selected}
-        class="mt-0.5 size-5 shrink-0 appearance-none rounded-full border-2 border-grey-300 bg-white text-teal-700 checked:bg-teal-700 focus:outline-none"
+        disabled={@disabled}
+        class="mt-0.5 size-5 shrink-0 appearance-none rounded-full border-2 border-grey-300 bg-white text-teal-700 checked:bg-teal-700 focus:outline-none disabled:cursor-not-allowed"
       />
       <div class="min-w-0">
         <span class="font-medium">{@label}</span>
