@@ -63,110 +63,114 @@
           {gettext("Optional. Set a monthly or engagement limit in hours or PLN.")}
         </p>
 
-        <div class="flex flex-col gap-3">
-          <.budget_field_option
-            form={@form}
-            field={:budget_kind}
-            value=""
-            selected={budget_kind_selected?(@form, nil)}
-            label={gettext("No budget")}
-          />
-          <.budget_field_option
-            form={@form}
-            field={:budget_kind}
-            value="hours"
-            selected={budget_kind_selected?(@form, :hours)}
-            label={gettext("Hours")}
-            hint={gettext("Counts logged session time on this project.")}
-          />
-          <.budget_field_option
-            form={@form}
-            field={:budget_kind}
-            value="amount"
-            selected={budget_kind_selected?(@form, :amount)}
-            label={gettext("Amount")}
-            hint={
-              gettext(
-                "Counts employee salary cost of logged time plus cost invoices tagged to this project."
-              )
-            }
-          />
-        </div>
+        <div class="grid grid-cols-1 gap-8 md:grid-cols-2 md:gap-16">
+          <div class="flex flex-col gap-4">
+            <div class="flex flex-col gap-3">
+              <.budget_field_option
+                form={@form}
+                field={:budget_kind}
+                value=""
+                selected={budget_kind_selected?(@form, nil)}
+                label={gettext("No budget")}
+              />
+              <.budget_field_option
+                form={@form}
+                field={:budget_kind}
+                value="hours"
+                selected={budget_kind_selected?(@form, :hours)}
+                label={gettext("Hours")}
+                hint={gettext("Counts logged session time on this project.")}
+              />
+              <.budget_field_option
+                form={@form}
+                field={:budget_kind}
+                value="amount"
+                selected={budget_kind_selected?(@form, :amount)}
+                label={gettext("Amount")}
+                hint={
+                  gettext(
+                    "Counts employee salary cost of logged time plus cost invoices tagged to this project."
+                  )
+                }
+              />
+            </div>
 
-        <div class="flex flex-col gap-4">
-          <div class="flex flex-col gap-3">
-            <p class="text-sm font-medium text-grey-700">{gettext("Period")}</p>
-            <.budget_field_option
-              form={@form}
-              field={:budget_scope}
-              value="monthly"
-              selected={budget_scope_selected?(@form, :monthly)}
-              disabled={budget_dependent_fields_disabled?(@form)}
-              label={gettext("Monthly")}
-              hint={gettext("The limit resets each calendar month.")}
-            />
-            <.budget_field_option
-              form={@form}
-              field={:budget_scope}
-              value="engagement"
-              selected={budget_scope_selected?(@form, :engagement)}
-              disabled={budget_dependent_fields_disabled?(@form)}
-              label={gettext("Engagement")}
-              hint={gettext("The limit runs from a start date to an end date and does not reset.")}
-            />
+            <div class="grid grid-cols-[min-content_1fr] items-start gap-x-5 gap-y-2">
+              <label
+                class={[
+                  "pt-1.5 text-sm text-nowrap text-grey-700",
+                  budget_dependent_fields_disabled?(@form) && "opacity-50"
+                ]}
+                for={@form[:budget_limit].id}
+              >
+                {gettext("Limit")}
+              </label>
+              <.input
+                field={@form[:budget_limit]}
+                type="number"
+                step="any"
+                min="0"
+                class="max-w-60"
+                disabled={budget_dependent_fields_disabled?(@form)}
+              />
+            </div>
           </div>
 
-          <div class="grid grid-cols-[min-content_1fr] items-start gap-x-5 gap-y-2">
-            <label
-              class={[
-                "pt-1.5 text-sm text-nowrap text-grey-700",
-                engagement_dates_disabled?(@form) && "opacity-50"
-              ]}
-              for={@form[:budget_engagement_starts_on].id}
-            >
-              {gettext("From")}
-            </label>
-            <.input
-              field={@form[:budget_engagement_starts_on]}
-              type="date"
-              class="max-w-60"
-              disabled={engagement_dates_disabled?(@form)}
-            />
-            <label
-              class={[
-                "pt-1.5 text-sm text-nowrap text-grey-700",
-                engagement_dates_disabled?(@form) && "opacity-50"
-              ]}
-              for={@form[:budget_engagement_ends_on].id}
-            >
-              {gettext("To")}
-            </label>
-            <.input
-              field={@form[:budget_engagement_ends_on]}
-              type="date"
-              class="max-w-60"
-              disabled={engagement_dates_disabled?(@form)}
-            />
-          </div>
+          <div class="flex flex-col gap-4">
+            <div class="flex flex-col gap-3">
+              <p class="text-sm font-medium text-grey-700">{gettext("Period")}</p>
+              <.budget_field_option
+                form={@form}
+                field={:budget_scope}
+                value="monthly"
+                selected={budget_scope_selected?(@form, :monthly)}
+                disabled={budget_dependent_fields_disabled?(@form)}
+                label={gettext("Monthly")}
+                hint={gettext("The limit resets each calendar month.")}
+              />
+              <.budget_field_option
+                form={@form}
+                field={:budget_scope}
+                value="engagement"
+                selected={budget_scope_selected?(@form, :engagement)}
+                disabled={budget_dependent_fields_disabled?(@form)}
+                label={gettext("Engagement")}
+                hint={gettext("The limit runs from a start date to an end date and does not reset.")}
+              />
+            </div>
 
-          <div class="grid grid-cols-[min-content_1fr] items-start gap-x-5 gap-y-2">
-            <label
-              class={[
-                "pt-1.5 text-sm text-nowrap text-grey-700",
-                budget_dependent_fields_disabled?(@form) && "opacity-50"
-              ]}
-              for={@form[:budget_limit].id}
-            >
-              {budget_limit_label(@form)}
-            </label>
-            <.input
-              field={@form[:budget_limit]}
-              type="number"
-              step="any"
-              min="0"
-              class="max-w-60"
-              disabled={budget_dependent_fields_disabled?(@form)}
-            />
+            <div class="grid grid-cols-[min-content_1fr] items-start gap-x-5 gap-y-2">
+              <label
+                class={[
+                  "pt-1.5 text-sm text-nowrap text-grey-700",
+                  engagement_dates_disabled?(@form) && "opacity-50"
+                ]}
+                for={@form[:budget_engagement_starts_on].id}
+              >
+                {gettext("From")}
+              </label>
+              <.input
+                field={@form[:budget_engagement_starts_on]}
+                type="date"
+                class="max-w-60"
+                disabled={engagement_dates_disabled?(@form)}
+              />
+              <label
+                class={[
+                  "pt-1.5 text-sm text-nowrap text-grey-700",
+                  engagement_dates_disabled?(@form) && "opacity-50"
+                ]}
+                for={@form[:budget_engagement_ends_on].id}
+              >
+                {gettext("To")}
+              </label>
+              <.input
+                field={@form[:budget_engagement_ends_on]}
+                type="date"
+                class="max-w-60"
+                disabled={engagement_dates_disabled?(@form)}
+              />
+            </div>
           </div>
         </div>
       </div>

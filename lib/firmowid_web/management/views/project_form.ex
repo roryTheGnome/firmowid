@@ -225,15 +225,6 @@ defmodule FirmowidWeb.Management.Views.ProjectForm do
     to_string(form[:budget_scope].value) == to_string(scope)
   end
 
-  @doc false
-  def budget_limit_label(form) do
-    case to_string(form[:budget_kind].value) do
-      "hours" -> gettext("Hour limit")
-      "amount" -> gettext("Amount limit (PLN)")
-      _ -> gettext("Limit")
-    end
-  end
-
   attr :form, :map, required: true
   attr :field, :atom, required: true
   attr :value, :string, required: true
