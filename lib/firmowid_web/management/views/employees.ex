@@ -59,6 +59,9 @@ defmodule FirmowidWeb.Management.Views.Employees do
         [Date.beginning_of_month(Date.utc_today())]
       )
       |> assign(:selected_user, nil)
+      |> assign(:selected_employee_ids, MapSet.new())
+      |> assign(:wage_editor_values, %{})
+      |> assign(:bulk_apply, default_bulk_apply())
       # Who works today, beside the table on wide screens.
       |> assign(:presence, Session.team_presence!(Date.utc_today(), scope: scope))
       |> assign_invites()
@@ -224,16 +227,80 @@ defmodule FirmowidWeb.Management.Views.Employees do
        :wage_editor -> :standard
        :standard -> :wages
      end)
+     |> assign(:wage_editor_values, %{})
+     |> assign(:selected_employee_ids, MapSet.new())
      |> assign_form()}
   end
 
   def handle_event("toggle_wage_editor", _params, socket) do
     editing_wages = socket.assigns.view == :wages
 
+    socket =
+      socket
+      |> assign(:view, if(editing_wages, do: :wage_editor, else: :wages))
+      |> then(fn sock ->
+        if editing_wages do
+          sock
+          |> assign(:wage_editor_values, initial_wage_editor_values(sock.assigns.employees))
+          |> assign(:selected_employee_ids, MapSet.new())
+          |> assign(:bulk_apply, default_bulk_apply())
+        else
+          sock
+          |> assign(:wage_editor_values, %{})
+          |> assign(:selected_employee_ids, MapSet.new())
+        end
+      end)
+      |> push_event("unsaved-changed", %{value: editing_wages})
+
+    {:noreply, socket}
+  end
+
+  def handle_event("change_wage_drafts", params, %{assigns: %{view: :wage_editor}} = socket) do
     {:noreply,
      socket
-     |> assign(:view, if(editing_wages, do: :wage_editor, else: :wages))
-     |> push_event("unsaved-changed", %{value: editing_wages})}
+     |> assign(:wage_editor_values, Map.get(params, "employee", %{}))
+     |> assign(:bulk_apply, Map.get(params, "bulk", socket.assigns.bulk_apply))}
+  end
+
+  def handle_event("toggle_employee_selection", %{"id" => id}, socket) do
+    selected = socket.assigns.selected_employee_ids
+
+    selected =
+      if MapSet.member?(selected, id),
+        do: MapSet.delete(selected, id),
+        else: MapSet.put(selected, id)
+
+    {:noreply, assign(socket, :selected_employee_ids, selected)}
+  end
+
+  def handle_event("toggle_all_employees", _params, socket) do
+    employee_ids = Enum.map(socket.assigns.employees, & &1.user.id)
+
+    selected =
+      if all_employees_selected?(socket.assigns.employees, socket.assigns.selected_employee_ids) do
+        MapSet.new()
+      else
+        MapSet.new(employee_ids)
+      end
+
+    {:noreply, assign(socket, :selected_employee_ids, selected)}
+  end
+
+  def handle_event("apply_bulk_wages", _params, %{assigns: %{view: :wage_editor}} = socket) do
+    %{"wage" => wage, "starts_at" => starts_at} = socket.assigns.bulk_apply
+
+    if wage in [nil, ""] do
+      {:noreply, put_flash(socket, :error, gettext("Enter a rate to apply to the selected employees."))}
+    else
+      starts_at = starts_at || default_starts_on()
+
+      updates =
+        socket.assigns.selected_employee_ids
+        |> MapSet.to_list()
+        |> Map.new(&{&1, %{"wage" => wage, "starts_at" => starts_at}})
+
+      {:noreply, assign(socket, :wage_editor_values, Map.merge(socket.assigns.wage_editor_values, updates))}
+    end
   end
 
   def handle_event("save_wages", %{"employee" => employees_params}, %{assigns: %{view: :wage_editor}} = socket) do
@@ -246,7 +313,7 @@ defmodule FirmowidWeb.Management.Views.Employees do
         hourly_rate = employee_params["wage"]
         starts_at = StartsAt.parse(employee_params["starts_at"])
 
-        if unchanged_wage?(employee.hourly_rate, hourly_rate, employee_params),
+        if unchanged_wage?(employee, employee_params),
           do: [],
           else: [%{member_id: employee.user.member.id, hourly_rate: hourly_rate, starts_at: starts_at}]
       end)
@@ -256,6 +323,8 @@ defmodule FirmowidWeb.Management.Views.Employees do
         {:noreply,
          socket
          |> assign(:view, :wages)
+         |> assign(:wage_editor_values, %{})
+         |> assign(:selected_employee_ids, MapSet.new())
          |> PosthogBusinessEvents.capture(
            :payroll_rates_updated,
            %{changed_employee_count: length(entries)}
@@ -512,9 +581,65 @@ defmodule FirmowidWeb.Management.Views.Employees do
   defp rate_since(_employee),
     do: DateTime.new!(Date.utc_today(), ~T[00:00:00], "Etc/UTC")
 
-  defp unchanged_wage?(current_rate, typed_rate, params) do
-    same_rate?(current_rate, typed_rate) and is_nil(params["starts_at"])
+  defp upcoming_rate_detail(%{hourly_rate: rate, starts_at: starts_at}) do
+    gettext("From %{date}: %{amount}/h",
+      date: TimeFormatter.format_date(starts_at),
+      amount:
+        rate
+        |> Money.new(:PLN)
+        |> Money.to_string!(no_fraction_if_integer: true)
+    )
   end
+
+  defp upcoming_rate_aria_label(salary) do
+    gettext("Upcoming rate change: %{detail}", detail: upcoming_rate_detail(salary))
+  end
+
+  defp unchanged_wage?(employee, params) do
+    same_rate?(employee.hourly_rate, params["wage"]) and
+      same_starts_on?(rate_since(employee), params["starts_at"] || default_starts_on())
+  end
+
+  defp same_starts_on?(%DateTime{} = current, starts_on) when is_binary(starts_on) do
+    current
+    |> DateTime.to_date()
+    |> Date.to_iso8601() == starts_on
+  end
+
+  defp wage_draft(employee, values, field) do
+    case get_in(values, [employee.user.id, field]) do
+      nil -> default_wage_draft(employee, field)
+      value -> value
+    end
+  end
+
+  defp default_wage_draft(employee, "wage") do
+    (employee.hourly_rate || Decimal.new(0))
+    |> Decimal.round()
+    |> Decimal.to_string()
+  end
+
+  defp default_wage_draft(_employee, "starts_at"), do: default_starts_on()
+
+  defp default_starts_on, do: Date.utc_today() |> Date.to_iso8601()
+
+  defp default_bulk_apply, do: %{"wage" => "", "starts_at" => default_starts_on()}
+
+  defp initial_wage_editor_values(employees) do
+    Map.new(employees, fn employee ->
+      {employee.user.id,
+       %{
+         "wage" => default_wage_draft(employee, "wage"),
+         "starts_at" => default_wage_draft(employee, "starts_at")
+       }}
+    end)
+  end
+
+  defp all_employees_selected?(employees, selected) do
+    employees != [] and Enum.all?(employees, &MapSet.member?(selected, &1.user.id))
+  end
+
+  defp wage_selection?(selected), do: MapSet.size(selected) > 0
 
   defp same_rate?(nil, _typed), do: false
 

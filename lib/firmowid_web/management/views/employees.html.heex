@@ -49,6 +49,7 @@
       <form
         id="employees-table"
         phx-submit="save_wages"
+        phx-change={@view == :wage_editor && "change_wage_drafts"}
         class={
           [
             "grid gap-x-6 gap-y-2",
@@ -89,7 +90,17 @@
           data-classes="border-b-4 border-solid border-grey-700/40 pt-3"
           data-scroll-offset="90"
         >
-          <p>{gettext("Employee")}</p>
+          <div class="flex min-w-0 items-center gap-3">
+            <input
+              :if={@view == :wage_editor and @live_action == :index}
+              type="checkbox"
+              checked={all_employees_selected?(@employees, @selected_employee_ids)}
+              phx-click="toggle_all_employees"
+              aria-label={gettext("Select all employees")}
+              class="size-4 shrink-0 cursor-pointer rounded-sm border-grey-300 text-rust-700 focus:ring-rust-300"
+            />
+            <p>{gettext("Employee")}</p>
+          </div>
           <p
             :if={roles_column?(assigns)}
             class="text-nowrap transition-[opacity,translate] duration-300 ease-out motion-reduce:transition-none max-md:hidden starting:translate-x-1 starting:opacity-0"
@@ -193,6 +204,33 @@
           </.empty_state>
         <% else %>
           <div
+            :if={@view == :wage_editor and @live_action == :index and wage_selection?(@selected_employee_ids)}
+            class="col-span-full flex flex-wrap items-center gap-3 rounded-sm bg-white px-4 py-2.5"
+          >
+            <span class="text-sm/[1.35] text-grey-700">{gettext("Apply to selected")}</span>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              name="bulk[wage]"
+              value={@bulk_apply["wage"]}
+              aria-label={pgettext("hourly rate", "Rate")}
+              class="h-8.5 w-18 rounded-sm border border-grey-200 bg-white px-3 text-right text-base/[1.35] tabular-nums focus:border-rust-300 focus:shadow-[inset_0_0_0_1px_var(--color-rust-300)] focus:ring-0 focus:outline-none"
+            />
+            <span class="text-sm/[1.35] text-grey-500">{gettext("PLN/h")}</span>
+            <input
+              type="date"
+              name="bulk[starts_at]"
+              value={@bulk_apply["starts_at"]}
+              aria-label={pgettext("hourly rate", "Effective from")}
+              class="h-8.5 rounded-sm border border-grey-200 bg-white px-2 text-base/[1.35] focus:border-rust-300 focus:shadow-[inset_0_0_0_1px_var(--color-rust-300)] focus:ring-0 focus:outline-none"
+            />
+            <.button type="button" variant="tertiary" size="small" phx-click="apply_bulk_wages">
+              {gettext("Apply")}
+            </.button>
+          </div>
+
+          <div
             :for={{employee, index} <- Enum.with_index(@employees)}
             :key={employee.user.id}
             class="col-span-full grid h-14 grid-cols-subgrid"
@@ -219,6 +257,19 @@
               end
             ]}>
               <div class="flex min-w-0 items-center gap-4">
+                <input
+                  :if={@view == :wage_editor and @live_action == :index}
+                  type="checkbox"
+                  checked={MapSet.member?(@selected_employee_ids, employee.user.id)}
+                  phx-click="toggle_employee_selection"
+                  phx-value-id={employee.user.id}
+                  aria-label={
+                    gettext("Select employee %{name}",
+                      name: employee.user.member.name || to_string(employee.user.email)
+                    )
+                  }
+                  class="size-4 shrink-0 cursor-pointer rounded-sm border-grey-300 text-rust-700 focus:ring-rust-300"
+                />
                 <.avatar class={["size-8 shrink-0", @live_action == :archive && "opacity-50"]}>
                   <.avatar_image
                     :if={employee.user.member.avatar_blob}
@@ -327,7 +378,11 @@
                     step="0.01"
                     min="0"
                     name={"employee[#{employee.user.id}][wage]"}
-                    value={Decimal.round(employee.hourly_rate || 0)}
+                    value={
+                      if @view == :wage_editor,
+                        do: wage_draft(employee, @wage_editor_values, "wage"),
+                        else: Decimal.round(employee.hourly_rate || 0)
+                    }
                     readonly={@view == :wages}
                     tabindex={if(@view == :wages, do: "-1")}
                     aria-label={pgettext("hourly rate", "Rate")}
@@ -353,11 +408,37 @@
                   ]}>
                     {gettext("PLN/h")}
                   </span>
+                  <.tooltip
+                    :if={employee.upcoming_rate}
+                    id={"upcoming-rate-#{employee.user.id}"}
+                    title={pgettext("hourly rate", "Rate update scheduled")}
+                    text={upcoming_rate_detail(employee.upcoming_rate)}
+                    variant="hint"
+                    placement="top"
+                  >
+                    <button
+                      type="button"
+                      aria-label={upcoming_rate_aria_label(employee.upcoming_rate)}
+                      class="shrink-0 cursor-pointer rounded-sm bg-rust-100 px-1.5 py-0.5 text-xs/snug font-medium text-rust-900 transition-colors hover:bg-rust-200"
+                    >
+                      {pgettext("hourly rate", "Upcoming")}
+                    </button>
+                  </.tooltip>
                 </div>
 
-                <p class="text-end text-nowrap text-grey-700 tabular-nums transition-[opacity,translate] delay-[calc(var(--row)*20ms)] duration-300 ease-out motion-reduce:transition-none starting:translate-x-1 starting:opacity-0">
-                  {TimeFormatter.format_date(rate_since(employee))}
-                </p>
+                <%= if @view == :wage_editor do %>
+                  <input
+                    type="date"
+                    name={"employee[#{employee.user.id}][starts_at]"}
+                    value={wage_draft(employee, @wage_editor_values, "starts_at")}
+                    aria-label={pgettext("hourly rate", "Effective from")}
+                    class="h-8.5 justify-self-end rounded-sm border border-grey-200 bg-white px-2 text-base/[1.35] text-grey-900 focus:border-rust-300 focus:shadow-[inset_0_0_0_1px_var(--color-rust-300)] focus:ring-0 focus:outline-none"
+                  />
+                <% else %>
+                  <p class="text-end text-nowrap text-grey-700 tabular-nums transition-[opacity,translate] delay-[calc(var(--row)*20ms)] duration-300 ease-out motion-reduce:transition-none starting:translate-x-1 starting:opacity-0">
+                    {TimeFormatter.format_date(rate_since(employee))}
+                  </p>
+                <% end %>
 
                 <p class="text-end text-nowrap text-grey-700 tabular-nums transition-[opacity,translate] delay-[calc(var(--row)*20ms)] duration-300 ease-out motion-reduce:transition-none starting:translate-x-1 starting:opacity-0">
                   {if flag_enabled?(:accurate_salary_calculation, assigns),
