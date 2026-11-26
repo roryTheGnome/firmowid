@@ -250,6 +250,16 @@ defmodule FirmowidWeb.Management.Utilities.Navigation do
     ~p"/zarzadzanie/projekty/#{project_id}?#{encode_params(params)}"
   end
 
+  @doc """
+  Builds the canonical project budget spending path.
+  """
+  @spec project_budget_spending_path(Ash.UUID.t() | String.t(), map()) :: String.t()
+  def project_budget_spending_path(project_id, params \\ %{})
+      when is_binary(project_id) and is_map(params) do
+    params = project_params(params)
+    ~p"/zarzadzanie/projekty/#{project_id}/wykorzystanie-budzetu?#{encode_params(params)}"
+  end
+
   defp encode_params(params) do
     params
     |> Map.new(fn

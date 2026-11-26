@@ -362,6 +362,13 @@ defmodule FirmowidWeb.Management.Views.Project do
   end
 
   @doc false
+  def budget_spending_path_params(%{period: %{scope: :monthly}}, selected_date) do
+    %{miesiac: selected_date}
+  end
+
+  def budget_spending_path_params(_usage, _selected_date), do: %{}
+
+  @doc false
   def budget_card_title(%{kind: :hours}), do: gettext("Hours budget")
   def budget_card_title(%{kind: :amount}), do: gettext("Amount budget")
 
