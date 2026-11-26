@@ -147,16 +147,26 @@ defmodule FirmowidWeb.Management.Views.Employees do
           end)
       end
 
-    # 3. Salaries as of this month]
+    # 3. Salaries active at the end of this month, and any scheduled future changes
     salaries =
       Payroll.list_salaries!(%{active_at: Date.end_of_month(date)},
         load: [monthly_amount: [month: date], monthly_payout: [month: date]],
         scope: scope
       )
 
-    salary_by_member = Map.new(salaries, &{&1.member_id, &1.hourly_rate})
-    payout_by_member = Map.new(salaries, &{&1.member_id, &1.monthly_payout})
-    gross_by_member = Map.new(salaries, &{&1.member_id, &1.monthly_amount})
+    active_salary_by_member = Map.new(salaries, &{&1.member_id, &1})
+    today = Date.utc_today()
+
+    upcoming_salary_by_member =
+      Payroll.list_salaries!(%{},
+        query: [
+          filter: expr(type(starts_at, :date) > ^today),
+          sort: [starts_at: :asc]
+        ],
+        scope: scope
+      )
+      |> Enum.group_by(& &1.member_id, & &1)
+      |> Map.new(fn {member_id, [upcoming | _]} -> {member_id, upcoming} end)
 
     # 4. Hours records for this month
     hr_by_member =
@@ -168,12 +178,16 @@ defmodule FirmowidWeb.Management.Views.Employees do
     employees =
       users
       |> Enum.map(fn user ->
+        salary = Map.get(active_salary_by_member, user.member.id)
+
         %{
           user: user,
           time_worked: Map.get(time_by_member, user.member.id, 0),
-          hourly_rate: Map.get(salary_by_member, user.member.id),
-          monthly_gross: Map.get(gross_by_member, user.member.id, Money.new!(:PLN, 0)),
-          monthly_payout: Map.get(payout_by_member, user.member.id),
+          hourly_rate: salary && salary.hourly_rate,
+          rate_since: salary && salary.starts_at,
+          upcoming_rate: Map.get(upcoming_salary_by_member, user.member.id),
+          monthly_gross: (salary && salary.monthly_amount) || Money.new!(:PLN, 0),
+          monthly_payout: salary && salary.monthly_payout,
           hours_record: Map.get(hr_by_member, user.member.id)
         }
       end)
@@ -492,6 +506,11 @@ defmodule FirmowidWeb.Management.Views.Employees do
 
   # The shown rate field is as wide as its digits (tabular, one `ch` each).
   defp rate_width(rate), do: (rate || 0) |> Decimal.round() |> Decimal.to_string() |> String.length()
+
+  defp rate_since(%{rate_since: %DateTime{} = starts_at}), do: starts_at
+
+  defp rate_since(_employee),
+    do: DateTime.new!(Date.utc_today(), ~T[00:00:00], "Etc/UTC")
 
   defp unchanged_wage?(current_rate, typed_rate, params) do
     same_rate?(current_rate, typed_rate) and is_nil(params["starts_at"])
