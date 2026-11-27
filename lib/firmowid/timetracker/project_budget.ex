@@ -10,7 +10,6 @@ defmodule Firmowid.Timetracker.ProjectBudget do
   other members must not see limits, spend, or salary-derived amounts through
   this module.
   """
-  alias Firmowid.Analysis
   alias Firmowid.Analysis.CategoryTotals
   alias Firmowid.Invoicing
   alias Firmowid.Payroll
@@ -234,10 +233,6 @@ defmodule Firmowid.Timetracker.ProjectBudget do
       scope: scope,
       load: [:effective_amount, entity_tags: [:tag_definition]]
     )
-    |> Enum.filter(fn invoice ->
-      Date.compare(Analysis.entry_month(invoice), period.starts_on) != :lt and
-        Date.compare(Analysis.entry_month(invoice), period.ends_on) != :gt
-    end)
     |> Enum.map(&project_invoice_share(&1, key))
     |> Enum.reduce(Decimal.new(0), &Decimal.add/2)
   end

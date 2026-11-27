@@ -5,6 +5,8 @@ defmodule Firmowid.Timetracker.ProjectBudgetTest do
   import Firmowid.AccountsFixtures
   import Firmowid.TimetrackerFixtures
 
+  alias Firmowid.Analysis.EntityTag
+  alias Firmowid.Invoicing.CostInvoice
   alias Firmowid.Scope
   alias Firmowid.Timetracker.Project
   alias Firmowid.Timetracker.ProjectBudget
@@ -66,6 +68,36 @@ defmodule Firmowid.Timetracker.ProjectBudgetTest do
                ProjectBudget.usage(project, ~D[2026-11-20], scope)
 
       assert Decimal.equal?(used, Decimal.new("1"))
+    end
+
+    test "counts tagged cost invoices in engagement amount budgets" do
+      admin = admin_fixture()
+      scope = scope(admin)
+
+      project =
+        budget_project!(admin, %{
+          budget_kind: :amount,
+          budget_scope: :engagement,
+          budget_engagement_starts_on: ~D[2026-01-15],
+          budget_engagement_ends_on: ~D[2026-02-10],
+          budget_limit: Decimal.new("5000")
+        })
+
+      invoice = cost_invoice!(admin, %{sale_date: ~D[2026-01-20], issue_date: ~D[2026-01-20]})
+
+      EntityTag.set_entity_project_tags!(
+        %{
+          entity_type: :cost_invoice,
+          resource_id: invoice.id,
+          tag_definition_ids: [project.tag_definition_id]
+        },
+        scope: scope
+      )
+
+      assert %{kind: :amount, used: used} =
+               ProjectBudget.usage(project, ~D[2026-02-01], scope)
+
+      assert Decimal.equal?(used, Decimal.new("123.45"))
     end
 
     test "adds salary cost for amount budgets" do
@@ -157,6 +189,27 @@ defmodule Firmowid.Timetracker.ProjectBudgetTest do
 
     {:ok, project} = Project.update(project, budget_attrs, scope: scope(admin))
     project
+  end
+
+  defp cost_invoice!(admin, attrs \\ %{}) do
+    Ash.Seed.seed!(
+      CostInvoice,
+      Map.merge(
+        %{
+          seller: "Supplier Sp. z o.o.",
+          seller_display_name: "Supplier",
+          sale_date: ~D[2026-01-20],
+          issue_date: ~D[2026-01-20],
+          due_date: ~D[2026-02-03],
+          amount: Money.new!("PLN", "-123.45"),
+          description: "Project budget test invoice",
+          invoice_identifier: "FV/BUDGET/#{System.unique_integer([:positive])}",
+          skip_invoicing: false,
+          organization_id: admin.member.organization_id
+        },
+        attrs
+      )
+    )
   end
 
   defp log_hours!(admin, project, start_datetime, end_datetime) do
