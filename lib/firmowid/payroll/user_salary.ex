@@ -5,6 +5,7 @@ defmodule Firmowid.Payroll.UserSalary do
   `bulk_create_salaries` sets new rates for several members in one transaction.
   """
   use Ash.Resource,
+    simple_notifiers: [Firmowid.Core.Notifiers.InboxChanged],
     domain: Firmowid.Payroll,
     data_layer: AshPostgres.DataLayer,
     authorizers: [Ash.Policy.Authorizer]

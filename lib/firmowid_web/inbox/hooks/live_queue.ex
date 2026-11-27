@@ -5,8 +5,8 @@ defmodule FirmowidWeb.Inbox.Hooks.LiveQueue do
   Pages of members subscribe to `Firmowid.Core.Notifiers.InboxChanged`.
   Changes arriving close together, like a batch of imported invoices, are
   gathered into one `:inbox_refresh` shortly after the first; the sidebar then
-  reloads its badge, and the inbox page receives the message itself to reload
-  its queue.
+  reloads its badge, and open pages that handle `:inbox_refresh` reload what they
+  show (the inbox queue, project budget cards, and the projects list).
   """
 
   alias Firmowid.Core.Notifiers.InboxChanged
@@ -54,8 +54,8 @@ defmodule FirmowidWeb.Inbox.Hooks.LiveQueue do
       LiveView.send_update(SidebarNav, id: SidebarNav.id(), refresh: true)
     end
 
-    socket = LiveView.put_private(socket, :inbox_changes, MapSet.new())
-    if socket.view == Index, do: {:cont, socket}, else: {:halt, socket}
+    LiveView.put_private(socket, :inbox_changes, MapSet.new())
+    {:cont, socket}
   end
 
   defp handle_info(:inbox_tick, socket) do

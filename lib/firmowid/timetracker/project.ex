@@ -9,8 +9,14 @@ defmodule Firmowid.Timetracker.Project do
   Read actions: `:get` (single project by ID, loads members + counterparty) and
   `:list` (flexible listing with optional filters — archive, activity period,
   user membership, ParadeDB search, ID set, tag definition).
+
+  Admins may optionally set a budget in hours or PLN, monthly or for a fixed
+  engagement period. Budget fields are readable only by admins; members on the
+  project see the name and assignments only. Usage tracking and alerts are
+  built on top of these fields.
   """
   use Ash.Resource,
+    simple_notifiers: [Firmowid.Core.Notifiers.InboxChanged],
     domain: Firmowid.Timetracker,
     data_layer: AshPostgres.DataLayer,
     authorizers: [Ash.Policy.Authorizer],
@@ -21,10 +27,12 @@ defmodule Firmowid.Timetracker.Project do
   alias Firmowid.Resource
   alias Firmowid.Timetracker.Changes.CleanupProjectTag
   alias Firmowid.Timetracker.Changes.CreateProjectTag
+  alias Firmowid.Timetracker.Changes.NormalizeProjectBudget
   alias Firmowid.Timetracker.Changes.SyncProjectTagName
   alias Firmowid.Timetracker.ProjectUser
   alias Firmowid.Timetracker.Session
   alias Firmowid.Timetracker.Validations.NoSessions
+  alias Firmowid.Timetracker.Validations.ProjectBudget
 
   require Resource
 
@@ -143,22 +151,49 @@ defmodule Firmowid.Timetracker.Project do
     create :create do
       description "Create a project with automatic TagDefinition creation for analysis tagging."
 
-      accept [:name, :counterparty_id]
+      accept [
+        :name,
+        :counterparty_id,
+        :budget_kind,
+        :budget_scope,
+        :budget_limit,
+        :budget_engagement_starts_on,
+        :budget_engagement_ends_on
+      ]
+
       argument :member_ids, {:array, :uuid}, allow_nil?: true
 
       change manage_relationship(:member_ids, :members, type: :append_and_remove)
       change CreateProjectTag
+      change NormalizeProjectBudget,
+        where: any([changing(:budget_kind), changing(:budget_scope)])
+
+      validate ProjectBudget
     end
 
     update :update do
       description "Update project attributes and sync the associated tag definition name."
       primary? true
-      accept [:name, :counterparty_id]
+
+      accept [
+        :name,
+        :counterparty_id,
+        :budget_kind,
+        :budget_scope,
+        :budget_limit,
+        :budget_engagement_starts_on,
+        :budget_engagement_ends_on
+      ]
+
       argument :member_ids, {:array, :uuid}, allow_nil?: true
       require_atomic? false
 
       change manage_relationship(:member_ids, :members, type: :append_and_remove)
       change SyncProjectTagName, where: [changing(:name)]
+      change NormalizeProjectBudget,
+        where: any([changing(:budget_kind), changing(:budget_scope)])
+
+      validate ProjectBudget
     end
 
     update :archive do
@@ -246,6 +281,24 @@ defmodule Firmowid.Timetracker.Project do
     end
   end
 
+  field_policies do
+    private_fields :include
+
+    field_policy [
+      :budget_kind,
+      :budget_scope,
+      :budget_limit,
+      :budget_engagement_starts_on,
+      :budget_engagement_ends_on
+    ] do
+      authorize_if {ActorRole, role: :admin}
+    end
+
+    field_policy :* do
+      authorize_if always()
+    end
+  end
+
   changes do
     change fn changeset, _context ->
              Ash.Changeset.manage_relationship(
@@ -278,6 +331,35 @@ defmodule Firmowid.Timetracker.Project do
     attribute :suspended_by_plan_at, :utc_datetime_usec,
       public?: true,
       description: "When the plan limit archived the project; a higher plan restores it."
+
+    attribute :budget_kind, :atom do
+      public? true
+      allow_nil? true
+      constraints one_of: [:hours, :amount]
+      description "Hours or amount budget; nil means the project has no budget."
+    end
+
+    attribute :budget_scope, :atom do
+      public? true
+      allow_nil? true
+      constraints one_of: [:monthly, :engagement]
+      description "Whether the limit applies per calendar month or across an engagement."
+    end
+
+    attribute :budget_limit, :decimal do
+      public? true
+      allow_nil? true
+      constraints greater_than: 0
+      description "Budget cap in hours or PLN, depending on budget_kind."
+    end
+
+    attribute :budget_engagement_starts_on, :date,
+      public?: true,
+      description: "First day of an engagement budget period."
+
+    attribute :budget_engagement_ends_on, :date,
+      public?: true,
+      description: "Last day of an engagement budget period."
 
     Resource.firmowid_timestamps()
   end

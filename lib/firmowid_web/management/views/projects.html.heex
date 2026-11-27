@@ -108,14 +108,17 @@
           ]}
         >
           <div class="min-w-0">
-            <.link
-              kind="unstyled"
-              navigate={Navigation.project_path(project.id, Map.take(@params, ["miesiac"]))}
-              class="block truncate text-base/[1.35] hover:underline"
-              title={project.name}
-            >
-              {project.name}
-            </.link>
+            <div class="flex min-w-0 items-center gap-2">
+              <.link
+                kind="unstyled"
+                navigate={Navigation.project_path(project.id, Map.take(@params, ["miesiac"]))}
+                class="min-w-0 truncate text-base/[1.35] hover:underline"
+                title={project.name}
+              >
+                {project.name}
+              </.link>
+              <.budget_status_badge usage={Map.get(@budget_usage_by_project, project.id)} />
+            </div>
             <p class={[
               "truncate text-sm/[1.35] md:hidden",
               if(@live_action == :archive, do: "text-grey-500", else: "text-grey-700")

@@ -12,6 +12,7 @@ defmodule Firmowid.Analysis.EntityTag do
   company, taxes, or internal. `assignment_source` separates human tags from automatic ones (`:jev`).
   """
   use Ash.Resource,
+    simple_notifiers: [Firmowid.Core.Notifiers.InboxChanged],
     domain: Firmowid.Analysis,
     fragments: [
       Firmowid.Analysis.EntityTag.Persistence,

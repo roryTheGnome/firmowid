@@ -12,6 +12,7 @@ defmodule FirmowidWeb.Management.Views.Projects do
   alias Firmowid.TimeFormatter
   alias Firmowid.Timetracker
   alias Firmowid.Timetracker.Project
+  alias Firmowid.Timetracker.ProjectBudget
   alias Firmowid.Timetracker.Session
   alias FirmowidWeb.Management.Utilities.CounterpartyHelpers
   alias FirmowidWeb.Management.Utilities.Navigation
@@ -62,6 +63,11 @@ defmodule FirmowidWeb.Management.Views.Projects do
   def handle_event("search", %{"szukaj" => search}, socket) do
     params = Map.put(socket.assigns.params, "szukaj", String.trim(search))
     {:noreply, refresh_page(socket, params)}
+  end
+
+  @impl true
+  def handle_info(:inbox_refresh, socket) do
+    {:noreply, assign_projects(socket)}
   end
 
   def handle_event("unarchive_project", %{"id" => id}, socket) do
@@ -124,8 +130,34 @@ defmodule FirmowidWeb.Management.Views.Projects do
 
     Firmowid.Repo.drop_paradedb_unnamed()
 
-    assign(socket, :projects, projects)
+    budget_usage_by_project = ProjectBudget.usage_by_project(projects, date, scope)
+
+    socket
+    |> assign(:projects, projects)
+    |> assign(:budget_usage_by_project, budget_usage_by_project)
   end
+
+  attr :usage, :map, default: nil
+
+  defp budget_status_badge(assigns) do
+    ~H"""
+    <span
+      :if={@usage && @usage.status in [:warning, :exceeded]}
+      class={[
+        "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs/[1.35] font-medium",
+        @usage.status == :exceeded && "bg-brick-100 text-brick-700",
+        @usage.status == :warning && "bg-teal-200 text-teal-800"
+      ]}
+      title={budget_status_label(@usage)}
+    >
+      <Lucideicons.triangle_alert class="size-3.5 shrink-0" aria-hidden="true" />
+      <span class="max-md:sr-only">{budget_status_label(@usage)}</span>
+    </span>
+    """
+  end
+
+  defp budget_status_label(%{status: :warning}), do: gettext("Budget nearly exhausted")
+  defp budget_status_label(%{status: :exceeded}), do: gettext("Budget exceeded")
 
   attr :selected_date, Date, required: true
   attr :projects, :list, required: true
