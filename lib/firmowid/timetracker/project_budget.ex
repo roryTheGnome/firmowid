@@ -11,7 +11,6 @@ defmodule Firmowid.Timetracker.ProjectBudget do
   this module.
   """
   alias Firmowid.Analysis
-  alias Firmowid.Checks.ActorRole
   alias Firmowid.Analysis.CategoryTotals
   alias Firmowid.Invoicing
   alias Firmowid.Payroll
@@ -78,8 +77,7 @@ defmodule Firmowid.Timetracker.ProjectBudget do
   defp do_usage_by_project(projects, reference_date, scope) do
     projects
     |> Enum.filter(&budget_configured?/1)
-    |> Enum.map(fn project -> {project.id, compute_usage(project, reference_date, scope)} end)
-    |> Map.new()
+    |> Map.new(fn project -> {project.id, compute_usage(project, reference_date, scope)} end)
   end
 
   defp compute_usage(%Project{} = project, reference_date, scope) do
@@ -107,13 +105,13 @@ defmodule Firmowid.Timetracker.ProjectBudget do
   end
 
   defp budget_configured?(%Project{budget_kind: kind, budget_limit: limit})
-       when kind in [:hours, :amount] and not is_nil(limit),
-       do: true
+       when kind in [:hours, :amount] and not is_nil(limit), do: true
 
   defp budget_configured?(_), do: false
 
-  defp admin_scope?(%Scope{actor: actor} = scope),
-    do: ActorRole.role(actor, scope) == :admin
+  defp admin_scope?(%Scope{actor: %{member: %{role: :admin, organization_id: org_id}}, tenant: org_id}), do: true
+
+  defp admin_scope?(_), do: false
 
   @doc "Whether `date` falls inside a budget period."
   @spec period_active?(period(), Date.t()) :: boolean()
@@ -179,7 +177,8 @@ defmodule Firmowid.Timetracker.ProjectBudget do
   defp amount_used(project, period, scope) do
     sessions = sessions(project, period, scope)
 
-    salary_cost(sessions, scope)
+    sessions
+    |> salary_cost(scope)
     |> Decimal.add(tagged_cost_invoices(project, period, scope))
   end
 
@@ -225,13 +224,13 @@ defmodule Firmowid.Timetracker.ProjectBudget do
   defp tagged_cost_invoices(%Project{tag_definition_id: tag_definition_id}, period, scope) do
     key = {:project, tag_definition_id}
 
-    Invoicing.list_cost_invoices!(
-      %{
-        date_from: period.starts_on,
-        date_to: period.ends_on,
-        date_field: :sale_date,
-        merge_corrections: true
-      },
+    %{
+      date_from: period.starts_on,
+      date_to: period.ends_on,
+      date_field: :sale_date,
+      merge_corrections: true
+    }
+    |> Invoicing.list_cost_invoices!(
       scope: scope,
       load: [:effective_amount, entity_tags: [:tag_definition]]
     )

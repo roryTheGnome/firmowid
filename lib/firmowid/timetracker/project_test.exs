@@ -4,6 +4,9 @@ defmodule Firmowid.Timetracker.ProjectTest do
   import Firmowid.AccountsFixtures
   import Firmowid.TimetrackerFixtures
 
+  alias Ash.Error.Changes.InvalidChanges
+  alias Ash.Error.Forbidden
+  alias Ash.Error.Invalid
   alias Firmowid.Analysis.TagDefinition
   alias Firmowid.Core
   alias Firmowid.Timetracker.Project
@@ -108,6 +111,165 @@ defmodule Firmowid.Timetracker.ProjectTest do
       assert TagDefinition
              |> Ash.Query.filter(id == ^project.tag_definition_id)
              |> Ash.exists?(actor: admin, authorize?: false, tenant: org_id)
+    end
+  end
+
+  describe "budget" do
+    test "requires scope when a budget is set", %{scope: scope} do
+      assert {:error, %Invalid{errors: errors}} =
+               Project.create(%{name: "Budget Project", budget_kind: :hours}, scope: scope)
+
+      assert Enum.any?(errors, &match?(%{field: :budget_scope}, &1))
+    end
+
+    test "requires a limit when a budget is set", %{scope: scope} do
+      assert {:error, %Invalid{errors: errors}} =
+               Project.create(
+                 %{name: "Budget Project", budget_kind: :hours, budget_scope: :monthly},
+                 scope: scope
+               )
+
+      assert Enum.any?(errors, &match?(%{field: :budget_limit}, &1))
+    end
+
+    test "rejects budget fields without a budget kind", %{scope: scope} do
+      assert {:error,
+              %Invalid{
+                errors: [
+                  %InvalidChanges{
+                    message: "budget scope, limit and engagement dates must be empty without a budget"
+                  }
+                ]
+              }} =
+               Project.create(%{name: "Orphan Limit", budget_limit: Decimal.new("10")},
+                 scope: scope
+               )
+    end
+
+    test "strips engagement dates when the scope is monthly", %{scope: scope} do
+      project = project_fixture(%{organization_id: scope.tenant})
+
+      {:ok, project} =
+        Project.update(
+          project,
+          %{
+            budget_kind: :hours,
+            budget_scope: :monthly,
+            budget_limit: Decimal.new("10"),
+            budget_engagement_starts_on: ~D[2026-11-01]
+          },
+          scope: scope
+        )
+
+      assert is_nil(project.budget_engagement_starts_on)
+    end
+
+    test "requires engagement dates for engagement budgets", %{scope: scope} do
+      assert {:error, %Invalid{errors: errors}} =
+               Project.create(
+                 %{
+                   name: "Engagement Budget",
+                   budget_kind: :hours,
+                   budget_scope: :engagement,
+                   budget_limit: Decimal.new("10")
+                 },
+                 scope: scope
+               )
+
+      assert Enum.any?(errors, &match?(%{field: :budget_engagement_starts_on}, &1))
+    end
+
+    test "rejects engagement periods that end before they start", %{scope: scope} do
+      assert {:error, %Invalid{errors: errors}} =
+               Project.create(
+                 %{
+                   name: "Backwards Engagement",
+                   budget_kind: :hours,
+                   budget_scope: :engagement,
+                   budget_limit: Decimal.new("10"),
+                   budget_engagement_starts_on: ~D[2026-11-15],
+                   budget_engagement_ends_on: ~D[2026-11-01]
+                 },
+                 scope: scope
+               )
+
+      assert Enum.any?(errors, &match?(%{field: :budget_engagement_ends_on}, &1))
+    end
+
+    test "clears budget fields when the budget is removed", %{scope: scope} do
+      project = project_fixture(%{organization_id: scope.tenant})
+
+      {:ok, project} =
+        Project.update(
+          project,
+          %{
+            budget_kind: :hours,
+            budget_scope: :monthly,
+            budget_limit: Decimal.new("10")
+          },
+          scope: scope
+        )
+
+      {:ok, project} = Project.update(project, %{budget_kind: nil}, scope: scope)
+
+      assert is_nil(project.budget_scope)
+      assert is_nil(project.budget_limit)
+    end
+
+    test "clears engagement dates when the scope is monthly", %{scope: scope} do
+      project = project_fixture(%{organization_id: scope.tenant})
+
+      {:ok, project} =
+        Project.update(
+          project,
+          %{
+            budget_kind: :hours,
+            budget_scope: :engagement,
+            budget_limit: Decimal.new("10"),
+            budget_engagement_starts_on: ~D[2026-11-01],
+            budget_engagement_ends_on: ~D[2026-11-30]
+          },
+          scope: scope
+        )
+
+      {:ok, project} = Project.update(project, %{budget_scope: :monthly}, scope: scope)
+
+      assert is_nil(project.budget_engagement_starts_on)
+      assert is_nil(project.budget_engagement_ends_on)
+    end
+
+    test "hides budget fields from project members", %{org_id: org_id, scope: scope} do
+      member = user_in_org_fixture(org_id)
+
+      {:ok, project} =
+        Project.create(
+          %{
+            name: "Budget Project",
+            budget_kind: :hours,
+            budget_scope: :monthly,
+            budget_limit: Decimal.new("10"),
+            member_ids: [member.member.id]
+          },
+          scope: scope
+        )
+
+      member_scope = %Firmowid.Scope{actor: member, tenant: org_id}
+      member_project = Ash.get!(Project, project.id, scope: member_scope, load: false)
+
+      assert %Ash.ForbiddenField{} = member_project.budget_kind
+      assert %Ash.ForbiddenField{} = member_project.budget_limit
+    end
+
+    test "forbids non-admins from changing budget settings", %{org_id: org_id, scope: scope} do
+      member = user_in_org_fixture(org_id)
+
+      {:ok, project} =
+        Project.create(%{name: "Member Project", member_ids: [member.member.id]}, scope: scope)
+
+      member_scope = %Firmowid.Scope{actor: member, tenant: org_id}
+
+      assert {:error, %Forbidden{}} =
+               Project.update(project, %{budget_limit: Decimal.new("20")}, scope: member_scope)
     end
   end
 
