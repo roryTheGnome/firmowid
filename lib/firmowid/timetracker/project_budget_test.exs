@@ -36,6 +36,20 @@ defmodule Firmowid.Timetracker.ProjectBudgetTest do
       assert Decimal.equal?(percent, Decimal.new("95.0"))
     end
 
+    test "reports :exceeded at 100% of the limit" do
+      admin = admin_fixture()
+      scope = scope(admin)
+      project = budget_project!(admin, %{budget_limit: Decimal.new("10")})
+
+      log_hours!(admin, project, ~U[2026-11-05 09:00:00Z], ~U[2026-11-05 19:00:00Z])
+
+      assert %{status: :exceeded, percent: percent, remaining: remaining} =
+               ProjectBudget.usage(project, ~D[2026-11-15], scope)
+
+      assert Decimal.equal?(percent, Decimal.new("100.0"))
+      assert Decimal.equal?(remaining, Decimal.new("0"))
+    end
+
     test "reports :exceeded above 100% of the limit" do
       admin = admin_fixture()
       scope = scope(admin)

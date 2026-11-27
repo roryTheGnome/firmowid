@@ -276,7 +276,7 @@ defmodule Firmowid.Timetracker.ProjectBudget do
 
   defp status(percent) do
     cond do
-      Decimal.compare(percent, @exceeded_threshold) == :gt -> :exceeded
+      Decimal.compare(percent, @exceeded_threshold) != :lt -> :exceeded
       Decimal.compare(percent, @warning_threshold) != :lt -> :warning
       true -> :ok
     end
