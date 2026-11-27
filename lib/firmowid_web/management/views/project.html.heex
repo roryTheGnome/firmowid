@@ -185,6 +185,19 @@
             {budget_remaining_text(@budget_usage)}
           </p>
           <p class="mt-1 text-sm/snug text-grey-500">{budget_period_text(@budget_usage)}</p>
+          <.link
+            kind="text"
+            size="small"
+            navigate={
+              Navigation.project_budget_spending_path(
+                @project.id,
+                budget_spending_path_params(@budget_usage, @selected_date)
+              )
+            }
+            class="mt-2"
+          >
+            {gettext("View budget spending")}
+          </.link>
         </div>
       </div>
       <div class="space-y-4 rounded-sm bg-white p-4">

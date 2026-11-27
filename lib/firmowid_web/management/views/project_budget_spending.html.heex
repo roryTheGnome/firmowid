@@ -1,0 +1,281 @@
+<div class="mx-auto my-4 grid w-full max-w-screen-2xl grid-cols-[96px_minmax(0,1fr)_96px] items-start gap-x-10 max-md:my-0 max-md:grid-cols-1 max-md:gap-y-6">
+  <.back
+    navigate={Navigation.project_path(@project.id, budget_back_params(@breakdown, @selected_date))}
+    class="pt-0.5 max-md:justify-self-start"
+  />
+  <div class="mx-auto w-full max-w-7xl space-y-8">
+    <div class="flex flex-row items-start justify-between gap-4 max-md:flex-col">
+      <div class="min-w-0 space-y-1">
+        <p class="text-sm/snug text-grey-500">
+          <%= if @project.counterparty do %>
+            <.link
+              kind="unstyled"
+              navigate={Navigation.counterparty_path(@project.counterparty.id)}
+              class="underline decoration-grey-300 underline-offset-4 hover:text-grey-700 hover:decoration-current"
+            >
+              {CounterpartyHelpers.party_label(@project.counterparty, @current_org)}
+            </.link>
+          <% else %>
+            {CounterpartyHelpers.party_label(@project.counterparty, @current_org)}
+          <% end %>
+        </p>
+        <p class="text-2xl/tight font-medium wrap-break-word">
+          {@project.name}
+        </p>
+        <p class="text-sm/snug text-grey-500">
+          {gettext("Budget spending")}
+        </p>
+      </div>
+
+      <.month_picker
+        :if={monthly_budget?(@breakdown)}
+        id="project_budget_spending_date_picker"
+        show_on_mobile
+        selected_date={@selected_date}
+        active_months={@active_months}
+        class="max-md:w-full"
+      />
+    </div>
+
+    <div class="rounded-sm bg-white p-4">
+      <p class="mb-6 leading-snug text-grey-500">{ProjectView.budget_card_title(@breakdown.usage)}</p>
+      <p class="mb-3 text-lg/tight font-medium text-black text-nowrap">
+        {ProjectView.budget_main_text(@breakdown.usage)}
+      </p>
+
+      <div class="mb-3 h-2 w-full overflow-hidden rounded-full bg-grey-200">
+        <div
+          class={ProjectView.budget_progress_bar_class(@breakdown.usage.status)}
+          style={"width: #{ProjectView.budget_progress_width(@breakdown.usage)}%"}
+        />
+      </div>
+
+      <p class="mb-1 text-sm/snug text-grey-700">{ProjectView.budget_percent_text(@breakdown.usage)}</p>
+      <p class={[
+        "text-sm/snug",
+        case @breakdown.usage.status do
+          :exceeded -> "text-brick-700"
+          :warning -> "text-teal-800"
+          :ok -> "text-grey-500"
+        end
+      ]}>
+        {ProjectView.budget_remaining_text(@breakdown.usage)}
+      </p>
+      <p class="mt-1 text-sm/snug text-grey-500">{ProjectView.budget_period_text(@breakdown.usage)}</p>
+    </div>
+
+    <div class="space-y-4 rounded-sm bg-white p-4">
+      <p class="text-lg/tight">{gettext("Employees")}</p>
+
+      <%= if Enum.empty?(@employees) do %>
+        <div class="flex flex-col items-center justify-center gap-4 py-8">
+          <p class="text-center text-sm text-grey-700">
+            {gettext("No employee is assigned to the project.")}
+          </p>
+        </div>
+      <% else %>
+        <div
+          class={[
+            "grid items-center gap-x-4 gap-y-2 max-md:gap-x-3",
+            amount_budget?(@breakdown) &&
+              "grid-cols-[1fr_minmax(min-content,6rem)_minmax(min-content,7rem)_minmax(min-content,6rem)_min-content] max-md:grid-cols-[minmax(0,1fr)_repeat(2,max-content)_min-content]",
+            !amount_budget?(@breakdown) &&
+              "grid-cols-[1fr_minmax(min-content,6rem)_min-content] max-md:grid-cols-[minmax(0,1fr)_max-content_min-content]"
+          ]}
+        >
+          <div class="col-span-full grid grid-cols-subgrid px-2 py-1 text-sm text-grey-500">
+            <p>{gettext("Full name")}</p>
+            <p :if={amount_budget?(@breakdown)} class="text-right max-md:hidden">
+              {pgettext("hourly rate", "Rate")}
+            </p>
+            <p class="text-right">{gettext("Hours")}</p>
+            <p :if={amount_budget?(@breakdown)} class="text-right">{gettext("Cost")}</p>
+            <div></div>
+          </div>
+
+          <div class="col-span-full grid grid-cols-subgrid gap-y-0 divide-y-2 divide-grey-100">
+            <div
+              :for={employee <- @employees}
+              class="col-span-full grid grid-cols-subgrid items-center border-grey-100 py-3 pr-4 pl-2 first:border-t-2 last:border-b-2 max-md:pr-2"
+            >
+              <div class="flex min-w-0 flex-row items-center gap-4 max-md:gap-2">
+                <.avatar class="size-8 shrink-0 ring-1 ring-grey-200/50">
+                  <.avatar_image
+                    :if={employee.user.member.avatar_blob}
+                    blob={employee.user.member.avatar_blob}
+                    sizes="32px"
+                    alt={gettext("Avatar")}
+                  />
+                  <.avatar_fallback class="bg-teal-200 text-teal-800">
+                    {to_string(employee.user.member.name || employee.user.email || "")
+                    |> String.slice(0, 1)
+                    |> String.upcase()}
+                  </.avatar_fallback>
+                </.avatar>
+                <.link
+                  kind="unstyled"
+                  navigate={Navigation.employee_path(employee.id, %{miesiac: @selected_date})}
+                  class="min-w-0 leading-snug wrap-break-word underline decoration-grey-300 underline-offset-4 hover:decoration-current"
+                >
+                  {employee.user.member.name || employee.user.email}
+                </.link>
+              </div>
+
+              <p :if={amount_budget?(@breakdown)} class="text-right text-grey-500 max-md:hidden">
+                <%= if employee.hourly_rate do %>
+                  {gettext("%{amount}/h",
+                    amount:
+                      :PLN
+                      |> Money.new(employee.hourly_rate)
+                      |> Money.to_string!(fractional_digits: 0)
+                  )}
+                <% else %>
+                  —
+                <% end %>
+              </p>
+
+              <p class="text-right text-nowrap text-grey-900">
+                {TimeFormatter.format_duration(employee.time_worked)}
+              </p>
+
+              <p :if={amount_budget?(@breakdown)} class="text-right text-grey-900">
+                <%= if employee.cost do %>
+                  {:PLN
+                  |> Money.new(employee.cost)
+                  |> Money.to_string!(fractional_digits: 0)}
+                <% else %>
+                  —
+                <% end %>
+              </p>
+
+              <.button
+                phx-click="toggle-user"
+                type="button"
+                variant="unstyled"
+                phx-value-id={employee.id}
+                disabled={employee.time_worked == 0}
+                aria-label={
+                  if employee.expanded, do: gettext("Hide sessions"), else: gettext("Show sessions")
+                }
+                aria-expanded={to_string(employee.expanded)}
+                class="inline-flex items-center justify-center disabled:opacity-50"
+              >
+                <%= if employee.expanded do %>
+                  <Lucideicons.chevron_up class="size-4 text-grey-900" />
+                <% else %>
+                  <Lucideicons.chevron_down class="size-4 text-grey-900" />
+                <% end %>
+              </.button>
+
+              <div
+                :if={employee.expanded}
+                class="col-span-full grid grid-cols-subgrid gap-y-4 pt-4 pb-3"
+              >
+                <div
+                  :for={session <- employee.sessions_with_duration}
+                  class="col-span-full grid grid-cols-subgrid pl-12 leading-snug text-grey-700 max-md:pl-10"
+                >
+                  <p>{session.title}</p>
+                  <p
+                    class={[
+                      "text-right text-nowrap",
+                      amount_budget?(@breakdown) && "col-start-3 max-md:col-start-2",
+                      !amount_budget?(@breakdown) && "col-start-2"
+                    ]}
+                  >
+                    {TimeFormatter.format_duration(session.duration)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-span-full grid grid-cols-subgrid items-center p-2 leading-snug">
+            <p class="text-sm text-grey-500">
+              {pgettext("project members table", "Total")}
+            </p>
+
+            <div :if={amount_budget?(@breakdown)} class="max-md:hidden" />
+
+            <p class="text-right font-bold text-nowrap">
+              {TimeFormatter.format_duration(@breakdown.total_time_worked)}
+            </p>
+
+            <p :if={amount_budget?(@breakdown)} class="text-right font-bold">
+              <%= if @breakdown.total_employee_cost do %>
+                {:PLN
+                |> Money.new(@breakdown.total_employee_cost)
+                |> Money.to_string!(fractional_digits: 0)}
+              <% else %>
+                —
+              <% end %>
+            </p>
+
+            <div />
+          </div>
+        </div>
+      <% end %>
+    </div>
+
+    <div :if={amount_budget?(@breakdown)} class="space-y-4 rounded-sm bg-white p-4">
+      <p class="text-lg/tight">{gettext("Tagged cost invoices")}</p>
+
+      <%= if @breakdown.invoices == [] do %>
+        <div class="flex flex-col items-center justify-center gap-4 py-8">
+          <p class="text-center text-sm text-grey-700">
+            {gettext("No cost invoice tagged to this project was found in the selected period.")}
+          </p>
+        </div>
+      <% else %>
+        <div class="grid grid-cols-[minmax(0,1fr)_minmax(min-content,7rem)_minmax(min-content,7rem)] items-center gap-x-4 gap-y-2 max-md:grid-cols-[minmax(0,1fr)_max-content]">
+          <div class="col-span-full grid grid-cols-subgrid px-2 py-1 text-sm text-grey-500">
+            <p>{gettext("Counterparty")}</p>
+            <p class="text-right max-md:hidden">{gettext("Issue date")}</p>
+            <p class="text-right">{gettext("Project share")}</p>
+          </div>
+
+          <div class="col-span-full grid grid-cols-subgrid gap-y-0 divide-y-2 divide-grey-100">
+            <div
+              :for={invoice <- @breakdown.invoices}
+              class="col-span-full grid grid-cols-subgrid items-center border-grey-100 py-3 pr-4 pl-2 first:border-t-2 last:border-b-2 max-md:pr-2"
+            >
+              <.link
+                kind="unstyled"
+                navigate={InvoicingNavigation.cost_invoice_show_path(invoice.id)}
+                class="min-w-0 leading-snug wrap-break-word underline decoration-grey-300 underline-offset-4 hover:decoration-current"
+              >
+                {invoice.seller_display_name || "—"}
+              </.link>
+
+              <p class="text-right text-grey-500 max-md:hidden">
+                <%= if invoice.issue_date do %>
+                  {Firmowid.Cldr.Date.to_string!(invoice.issue_date, format: :long)}
+                <% else %>
+                  —
+                <% end %>
+              </p>
+
+              <p class="text-right text-grey-900">
+                {:PLN
+                |> Money.new(invoice.share)
+                |> Money.to_string!(fractional_digits: 0)}
+              </p>
+            </div>
+          </div>
+
+          <div class="col-span-full grid grid-cols-subgrid items-center p-2 leading-snug">
+            <p class="text-sm text-grey-500">
+              {pgettext("project members table", "Total")}
+            </p>
+            <div class="max-md:hidden" />
+            <p class="text-right font-bold">
+              {:PLN
+              |> Money.new(@breakdown.total_invoice_cost)
+              |> Money.to_string!(fractional_digits: 0)}
+            </p>
+          </div>
+        </div>
+      <% end %>
+    </div>
+  </div>
+</div>

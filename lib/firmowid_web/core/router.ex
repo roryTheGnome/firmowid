@@ -360,6 +360,10 @@ defmodule FirmowidWeb.Core.Router do
       live "/zarzadzanie/projekty/archiwum", Projects, :archive
       live "/zarzadzanie/projekty/dodaj", ProjectForm, :new
       live "/zarzadzanie/projekty/:id", Management.Views.Project, :show
+      live "/zarzadzanie/projekty/:id/wykorzystanie-budzetu",
+           Management.Views.ProjectBudgetSpending,
+           :show
+
       live "/zarzadzanie/projekty/:id/edycja", ProjectForm, :edit
 
       if Mix.env() == :dev do

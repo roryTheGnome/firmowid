@@ -11,6 +11,7 @@ defmodule Firmowid.Timetracker.ProjectBudget do
   this module.
   """
   alias Firmowid.Analysis.CategoryTotals
+  alias Firmowid.Core
   alias Firmowid.Invoicing
   alias Firmowid.Payroll
   alias Firmowid.Scope
@@ -35,6 +36,30 @@ defmodule Firmowid.Timetracker.ProjectBudget do
           remaining: Decimal.t(),
           percent: Decimal.t(),
           status: status()
+        }
+  @type employee_row :: %{
+          id: String.t(),
+          user: Core.User.t(),
+          time_worked: non_neg_integer(),
+          hourly_rate: Decimal.t() | nil,
+          cost: Decimal.t() | nil,
+          removed_from_project: boolean()
+        }
+  @type invoice_row :: %{
+          id: String.t(),
+          seller_display_name: String.t() | nil,
+          issue_date: Date.t() | nil,
+          share: Decimal.t()
+        }
+  @type spending_breakdown :: %{
+          kind: :hours | :amount,
+          period: period(),
+          usage: usage(),
+          employees: [employee_row()],
+          invoices: [invoice_row()],
+          total_time_worked: non_neg_integer(),
+          total_employee_cost: Decimal.t() | nil,
+          total_invoice_cost: Decimal.t()
         }
 
   @doc """
@@ -77,6 +102,72 @@ defmodule Firmowid.Timetracker.ProjectBudget do
     projects
     |> Enum.filter(&budget_configured?/1)
     |> Map.new(fn project -> {project.id, compute_usage(project, reference_date, scope)} end)
+  end
+
+  @doc """
+  Returns per-employee and tagged-invoice spending for a budget period, or `nil`
+  when the project has no budget or the actor is not an admin.
+
+  Totals match `usage/3` for the same project and reference date.
+  """
+  @spec spending_breakdown(Project.t(), Date.t(), Scope.t()) :: spending_breakdown() | nil
+  def spending_breakdown(project, reference_date, scope) do
+    with true <- admin_scope?(scope),
+         true <- budget_configured?(project) do
+      project = Ash.load!(project, [members: [:user]], scope: scope)
+      period = period(project, reference_date)
+      sessions = sessions(project, period, scope)
+
+      employees = employee_rows(project, sessions, period, scope)
+      total_time_worked = employees |> Enum.map(& &1.time_worked) |> Enum.sum()
+
+      total_employee_cost =
+        if project.budget_kind == :amount do
+          employees
+          |> Enum.map(& &1.cost)
+          |> Enum.reject(&is_nil/1)
+          |> Enum.reduce(Decimal.new(0), &Decimal.add/2)
+        end
+
+      invoices =
+        if project.budget_kind == :amount,
+          do: tagged_cost_invoice_rows(project, period, scope),
+          else: []
+
+      total_invoice_cost =
+        invoices
+        |> Enum.map(& &1.share)
+        |> Enum.reduce(Decimal.new(0), &Decimal.add/2)
+
+      %{
+        kind: project.budget_kind,
+        period: period,
+        usage: compute_usage(project, reference_date, scope),
+        employees: employees,
+        invoices: invoices,
+        total_time_worked: total_time_worked,
+        total_employee_cost: total_employee_cost,
+        total_invoice_cost: total_invoice_cost
+      }
+    else
+      _ -> nil
+    end
+  end
+
+  @doc """
+  Recomputes the `used` value from a `spending_breakdown/3` result.
+
+  For hours budgets this is logged time in hours; for amount budgets it is the
+  sum of employee salary cost and tagged cost-invoice shares.
+  """
+  @spec spending_components_used(spending_breakdown()) :: Decimal.t()
+  def spending_components_used(%{kind: :hours, total_time_worked: seconds}) do
+    seconds_to_hours(seconds)
+  end
+
+  def spending_components_used(%{kind: :amount} = breakdown) do
+    employee_cost = breakdown.total_employee_cost || Decimal.new(0)
+    Decimal.add(employee_cost, breakdown.total_invoice_cost)
   end
 
   defp compute_usage(%Project{} = project, reference_date, scope) do
@@ -221,6 +312,14 @@ defmodule Firmowid.Timetracker.ProjectBudget do
   defp tagged_cost_invoices(%Project{tag_definition_id: nil}, _period, _scope), do: Decimal.new(0)
 
   defp tagged_cost_invoices(%Project{tag_definition_id: tag_definition_id}, period, scope) do
+    tagged_cost_invoice_rows(%Project{tag_definition_id: tag_definition_id}, period, scope)
+    |> Enum.map(& &1.share)
+    |> Enum.reduce(Decimal.new(0), &Decimal.add/2)
+  end
+
+  defp tagged_cost_invoice_rows(%Project{tag_definition_id: nil}, _period, _scope), do: []
+
+  defp tagged_cost_invoice_rows(%Project{tag_definition_id: tag_definition_id}, period, scope) do
     key = {:project, tag_definition_id}
 
     %{
@@ -233,8 +332,90 @@ defmodule Firmowid.Timetracker.ProjectBudget do
       scope: scope,
       load: [:effective_amount, entity_tags: [:tag_definition]]
     )
-    |> Enum.map(&project_invoice_share(&1, key))
+    |> Enum.map(fn invoice ->
+      share = project_invoice_share(invoice, key)
+
+      if Decimal.compare(share, 0) == :gt do
+        %{
+          id: invoice.id,
+          seller_display_name: invoice.seller_display_name,
+          issue_date: invoice.issue_date,
+          share: share
+        }
+      end
+    end)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.sort_by(& &1.issue_date, {:desc, Date})
+  end
+
+  defp employee_rows(project, sessions, period, scope) do
+    time_by_user =
+      sessions
+      |> Enum.group_by(& &1.member.user_id)
+      |> Map.new(fn {uid, ss} -> {uid, ss |> Enum.map(& &1.duration) |> Enum.sum()} end)
+
+    member_ids = MapSet.new(project.members, & &1.user_id)
+    session_user_ids = MapSet.new(Map.keys(time_by_user))
+    all_user_ids = MapSet.union(member_ids, session_user_ids)
+
+    users_by_id = Map.new(project.members, &{&1.user_id, %{&1.user | member: &1}})
+
+    display_salaries =
+      Payroll.list_salaries!(%{active_at: Date.end_of_month(period.ends_on)},
+        scope: scope,
+        load: [:member]
+      )
+
+    display_rate_by_user = Map.new(display_salaries, &{&1.member.user_id, &1.hourly_rate})
+
+    all_user_ids
+    |> Enum.map(fn uid ->
+      user = resolve_user(uid, users_by_id, scope)
+      time = Map.get(time_by_user, uid, 0)
+
+      cost =
+        if time == 0 do
+          nil
+        else
+          user_sessions = Enum.filter(sessions, &(&1.member.user_id == uid))
+          employee_salary_cost(user_sessions, scope)
+        end
+
+      %{
+        id: user.id,
+        user: user,
+        time_worked: time,
+        hourly_rate: Map.get(display_rate_by_user, uid),
+        cost: cost,
+        removed_from_project: not MapSet.member?(member_ids, uid)
+      }
+    end)
+    |> Enum.sort_by(&{&1.removed_from_project, &1.user.member.name, &1.user.email})
+  end
+
+  defp employee_salary_cost(user_sessions, scope) do
+    user_sessions
+    |> Enum.group_by(fn session ->
+      session.start_datetime |> DateTime.to_date() |> Date.beginning_of_month()
+    end)
+    |> Enum.map(fn {month, month_sessions} ->
+      salaries =
+        Payroll.list_salaries!(%{active_at: Date.end_of_month(month)},
+          scope: scope,
+          load: [:member]
+        )
+
+      salary_by_user = Map.new(salaries, &{&1.member.user_id, &1.hourly_rate})
+      session_salary_cost(month_sessions, salary_by_user)
+    end)
     |> Enum.reduce(Decimal.new(0), &Decimal.add/2)
+  end
+
+  defp resolve_user(uid, users_by_id, scope) do
+    case Map.get(users_by_id, uid) do
+      nil -> Core.get_org_user!(%{id: uid}, scope: scope, load: [:member])
+      u -> u
+    end
   end
 
   defp project_invoice_share(invoice, key) do

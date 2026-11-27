@@ -114,11 +114,6 @@ defmodule FirmowidWeb.Management.Views.Project do
     end
   end
 
-  @impl true
-  def handle_info(:inbox_refresh, socket) do
-    {:noreply, assign_project_data(socket)}
-  end
-
   def handle_event("delete_project", _, socket) do
     scope = socket.assigns.ash_scope
     project = socket.assigns.project
@@ -133,6 +128,11 @@ defmodule FirmowidWeb.Management.Views.Project do
       {:error, %Ash.Error.Invalid{errors: [%{message: message} = error | _]}} ->
         {:noreply, put_flash(socket, :error, Inputs.translate_error({message, Map.get(error, :vars, [])}))}
     end
+  end
+
+  @impl true
+  def handle_info(:inbox_refresh, socket) do
+    {:noreply, assign_project_data(socket)}
   end
 
   # ── Archived project: all-time totals ─────────────────────────────────
@@ -360,6 +360,13 @@ defmodule FirmowidWeb.Management.Views.Project do
     {@before_name}<b>{@name}</b>{@after_name}
     """
   end
+
+  @doc false
+  def budget_spending_path_params(%{period: %{scope: :monthly}}, selected_date) do
+    %{miesiac: selected_date}
+  end
+
+  def budget_spending_path_params(_usage, _selected_date), do: %{}
 
   @doc false
   def budget_card_title(%{kind: :hours}), do: gettext("Hours budget")
